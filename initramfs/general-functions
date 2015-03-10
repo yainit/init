@@ -1,0 +1,1269 @@
+#
+#  INIT-FUNCTIONS for Universal INIT with busybox
+#  (C) Dieter Miosga , 2008-2014-09-30, dieter.miosga@gmx.de
+#
+#set -x
+#
+echofile()
+{
+  local  SCRIPT
+  # the //scriptname form of scriptname remained
+  # for some kernel internal reason
+  # set quiet parameter on cmdline to stop any system messages from init script
+  [ "$QUIET" = "" ] && echo "$1 $2"  >> "$MSGFILE" 2>&1
+}
+#
+echoconsole()
+{
+  local  SCRIPT
+  # the //scriptname form of scriptname remained
+  # for some kernel internal reason
+  SCRIPT="$1"
+  #SCRIPT="$(echo $1 | /bin/busybox tr -d "\/" 2>/dev/null)"
+  [ "$SCRIPT" = "" ] && SCRIPT="$1"
+  # set quiet parameter on cmdline to stop any system messages from init script
+  if [ "$INITDBG" != "" ]; then  echofile "$SCRIPT" "$2"; fi
+  if [ "$QUIET" = "" ]; then echo "$SCRIPT $2 "; fi
+  if [ "$DELAY" != "" ]; then /bin/busybox usleep $SYSWAIT 2>/dev/null; fi
+}
+#
+error2ash()
+{  # drop to system prompt in case of error
+ if [ "$SYSERRPROMPT" !=  "" ]; then
+   echoconsole  "$1" "Due to previous error in the execution of script..."
+   echoconsole  "$1" "..enter the /bin/busybox ash shell prompt or "
+   echoconsole  "$1" "press <ctrl-alt-del> for reboot"
+   /bin/busybox ash < /dev/console
+ else
+   echoconsole  "$1" "Fatal error during execution of curent scritpt "
+   echoconsole  "$1" "Invoking crasher now if module present,"
+   echoconsole  "$1" "or continuing execution until system crashes ... "
+ fi
+ if [ "$SYSERRFATAL" != "" ]; then
+   local CRASH INSERT
+   CRASH=`/bin/busybox modprobe -D crasher 2>/dev/null`
+   if [ "$CRASH" != "" ]; then
+     echoconsole  "$1" ".... due to fatal error, system is forced to crash now!"
+     echoconsole  "$1" "If it is not crahsng right after here, it will continue unstable until crash!"
+     /bin/busybox modprobe crasher 2>/dev/null
+   fi
+ fi
+}
+#
+extract_initscripts()
+{  # if the initscripts are compressed in a file
+ local INITSCRIPTFILE INITSCRIPTS
+ INITSCRIPTS="initscripts.tar"
+ if [ "$1" != "" ]; then INITSCRIPTS="$1"; fi
+ INITSCRIPTFILE=`/bin/busybox ls -1 $INITSCRIPTS* 2>/dev/null`
+ if [ "$INITSCRIPTFILE" != ""  ]; then
+   /bin/busybox tar -xf $INITSCRIPTFILE 2>/dev/null
+ fi
+}
+#
+inline_external_file()
+{
+  if [ -e "$1" ]; then
+    . "$1"
+  elif [ -e "$CONFIGDIR/$1" ]; then
+    . "$CONFIGDIR/$1"
+  else
+    echo  "$INITPREF Can't continue : Broken init! Missing file: '$1' or '$CONFIGDIR/$1' "
+    echo  "$INITPREF Please correct it at the /bin/busybox ash shell prompt "
+    echo  "$INITPREF by creating this file and press <ctrl-d> afterwards or "
+    echo  "$INITPREF press <ctrl-alt-del> for reboot......"
+    echo  "$INITPREF ......and reconfigure your YaIniT system"
+    /bin/busybox ash < /dev/console
+  fi
+}
+#
+debug_prompt()
+{ # drop to system prompt in case of debugging switched on
+   echoconsole "$1"  "press <ctrl-d> to continue...."
+   /bin/busybox sync
+   /bin/busybox sleep 1
+   /bin/busybox ash < /dev/console
+}
+#
+debug_mark()
+{
+  if [ "$INITDBG" != "" -a "$SYSERRPROMPT" != "" ]; then
+    debug_prompt "$1"
+  fi
+}
+#
+start_tracing()
+{
+  [ "$DEBUG" != "" -a "$INITDBG" != "" ] && set -x
+}
+#
+stop_tracing()
+{
+  [ "$DEBUG" != "" -a "$INITDBG" != "" ] && set +x
+}
+#
+assign_kernver_vars()
+{
+  #set -x
+  local LVER SEPAR RC TRUNKKERNVER SECEXTRAKERNVER
+  #set -x
+  LVER=$(echo $KERNVER | /bin/busybox tr "-" "." 2>/dev/null)
+  if [ "$LVER" != "$KERNVER" ]; then
+     SEPAR="-"
+  else
+     SEPAR="."
+  fi
+
+  LVER=$KERNVER   #| /bin/busybox tr "-" "." 2>/dev/null)
+  SUFFIXKERNVER=${KERNVER%$SEPAR*}
+  SUFFIXKERNVER=${KERNVER#$SUFFIXKERNVER$SEPAR}
+  TOPKERNVER=${KERNVER//.*}
+  LVER=${LVER#$TOPKERNVER.}
+  RC=0
+  TRUNKKERNVER=""
+  MAJORKERNVER=""
+  MINORKERNVER=""
+  EXTRAKERNVER=""
+
+  case $KERNVER  in
+    *.*.*.*.*)
+      echoconsole "$1" "inadmissible Kernel Version format: '$KERNVER' ! May contain only 3 '.' "
+      MAJORKERNVER=${LVER//.*}
+      LVER=${LVER#$MAJORKERNVER.}
+      MINORKERNVER=${LVER//.*}
+      LVER=${LVER#$MINORKERNVER.}
+      EXTRAKERNVER=${LVER%$SUFFIXKERNVER}
+      EXTRAKERNVER=${EXTRAKERNVER%$SEPAR}
+      RC=4
+    ;;
+    *.*.*.*)
+        MAJORKERNVER=${LVER//.*}
+        LVER=${LVER#$MAJORKERNVER.}
+        MINORKERNVER=${LVER//.*}
+        LVER=${LVER#$MINORKERNVER.}
+        EXTRAKERNVER=${LVER//.*}
+        SECEXTRAKERNVER=$EXTRAKERNVER
+        if [ "$(echo $MINORKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" != "" ]; then
+           EXTRAKERNVER=${MINORKERNVER} #//$SEPAR$SUFFIXKERNVER}
+           MINORKERNVER=""
+           # allow up 10^i -1 = 10**i -1 different subversions
+           for i in 1 2 3 4; do
+             TRUNKKERNVER=${EXTRAKERNVER:0:$i}
+             if [ "$(echo $TRUNKKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" = "" ]; then
+                 #EXTRAKERNVER=${EXTRAKERNVER#$MINORKERNVER}
+                 MINORKERNVER=$TRUNKKERNVER
+             fi
+           done
+           [ $MINORKERNVER ] || MINORKERNVER=0
+           EXTRAKERNVER=${EXTRAKERNVER#$MINORKERNVER}
+           EXTRAKERNVER=${EXTRAKERNVER#$SEPAR}
+           EXTRAKERNVER=$EXTRAKERNVER.$SECEXTRAKERNVER
+        fi
+        SUFFIX="$SUFFIXKERNVER"
+        SUFFIXKERNVER=""
+        kextent=""
+        for kextent in $ALLEXTENTS $ALLSUBEXTENTS; do
+          if `is_substring_of "$kextent" "$EXTRAKERNVER " `; then
+            SUFFIXKERNVER="$kextent"
+          fi
+        done
+        if [ "$SUFFIXKERNVER" = "" ] ; then SUFFIXKERNVER=$SUFFIX; fi
+        TRUNKKERNVER=${EXTRAKERNVER%$SUFFIXKERNVER}
+        if [ "$TRUNKKERNVER$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+          SUFFIXKERNVER=""
+        else
+          EXTRAKERNVER=$TRUNKKERNVER
+        fi
+        if [ "$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+          EXTRAKERNVER=${EXTRAKERNVER#$SEPAR}
+          EXTRAKERNVER=${EXTRAKERNVER%$SEPAR}
+          EXTRAKERNVER=${EXTRAKERNVER%$SEPAR$SUFFIXKERNVER}
+          TRUNKKERNVER=${EXTRAKERNVER}${SEPAR}${SUFFIXKERNVER}
+          if [ "$TRUNKKERNVER" = "$EXTRAKERNVER" ]; then
+            EXTRAKERNVER=${TRUNKKERNVER//$SEPAR$SUFFIXKERNVER}
+          fi
+        fi
+    ;;
+    *.*.*)
+      MAJORKERNVER=${LVER//.*}
+      LVER=${LVER#$MAJORKERNVER.}
+      MINORKERNVER=${LVER%$SEPAR$SUFFIXKERNVER}
+      LVER=${LVER#$MINORKERNVER}
+      #[ "$LVER" ] ||  ${LVER#$MINORKERNVER}
+      EXTRAKERNVER=${LVER#$SEPAR}
+      SECEXTRAKERNVER=$EXTRAKERNVER
+      #EXTRAKERNVER=${LVER//$SUFFIXKERNVER}
+      #LVER=${LVER#$SEPAR$EXTRAKERNVER$SEPAR}
+      if [ "$(echo $MINORKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" != "" ]; then
+         EXTRAKERNVER=${MINORKERNVER} #//$SEPAR$SUFFIXKERNVER}
+         MINORKERNVER=""
+         # allow up (10^i) -1 = (10**i) -1 different subversions
+         for i in 1 2 3 4; do
+           TRUNKKERNVER=${EXTRAKERNVER:0:$i}
+           if [ "$(echo $TRUNKKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" = "" ]; then
+               MINORKERNVER=$TRUNKKERNVER
+           fi
+         done
+         [ $MINORKERNVER ] || MINORKERNVER=0
+         EXTRAKERNVER=${EXTRAKERNVER#$MINORKERNVER}
+         EXTRAKERNVER=${EXTRAKERNVER#$SEPAR}
+      fi
+    ;;
+    *.*)
+      MAJORKERNVER=${LVER//$SEPAR*}
+      LVER=${LVER#$MAJORKERNVER$SEPAR$SUFFIXKERNVER}
+      #MINORKERNVER=""
+      #EXTRAKERNVER=""
+    ;;
+    *)
+      echoconsole "$1" "inadmissible Kernel Version format: '$KERNVER' !"
+      echoconsole "$1" "Must contain at least one '.' and not more than three '.' "
+      #MAJORKERNVER=$KERNVER
+      #MINORKERNVER=""
+      #EXTRAKERNVER=""
+      RC=4
+      return $RC
+    ;;
+  esac
+  #
+  if [ "$(echo $MAJORKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" != "" ]; then
+      echoconsole "$1" "inadmissible Kernel Version format: '$KERNVER' ! Major Version must be digit only. "
+      MAJORKERNVER=""
+      MINORKERNVER=""
+      EXTRAKERNVER=""
+      RC=4
+      return $RC
+  fi
+  TRUNKKERNVER=""
+  #if [ "$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+  if `is_substring_of "$EXTRAKERNVER" "$SUFFIXKERNVER" `; then
+     SUFFIX="$SUFFIXKERNVER"
+     SUFFIXKERNVER=""
+     for ext in $ALLEXTENTS $ALLSUBEXTENTS; do
+       if `is_substring_of "$ext" "$EXTRAKERNVER" `; then
+         SUFFIXKERNVER="$ext"
+       fi
+     done
+     TRUNKKERNVER=${EXTRAKERNVER%$SUFFIXKERNVER}
+     if [ "$TRUNKKERNVER$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+       SUFFIXKERNVER=""
+     else
+       EXTRAKERNVER=$TRUNKKERNVER
+     fi
+    if [ "$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+      EXTRAKERNVER=${EXTRAKERNVER#$SEPAR}
+      EXTRAKERNVER=${EXTRAKERNVER%$SEPAR}
+      EXTRAKERNVER=${EXTRAKERNVER%$SEPAR$SUFFIXKERNVER}
+      TRUNKKERNVER=${EXTRAKERNVER}${SEPAR}${SUFFIXKERNVER}
+      if [ "$TRUNKKERNVER" = "$EXTRAKERNVER" ]; then
+        EXTRAKERNVER=${TRUNKKERNVER//$SEPAR$SUFFIXKERNVER}
+      fi
+    fi
+  fi
+
+  #set +x
+  export TOPKERNVER MAJORKERNVER MINORKERNVER EXTRAKERNVER SUFFIXKERNVER
+  echoconsole "$1" "Top Version: '$TOPKERNVER' , Major Version: '$MAJORKERNVER' , Minor Version: '$MINORKERNVER'"
+  echoconsole "$1" "Extra Version: '$EXTRAKERNVER' , Suffix Version: '$SUFFIXKERNVER' "
+  return $RC
+}
+#
+assign_kernver_vars_old()
+{
+  local LVER SEPAR RC TRUNKKERNVER SECEXTRAKERNVER
+  #set -x
+  LVER=$(echo $KERNVER | /bin/busybox tr "-" "." 2>/dev/null)
+  if [ "$LVER" != "$KERNVER" ]; then
+     SEPAR="-"
+  else
+     SEPAR="."
+  fi
+
+  LVER=$KERNVER   #| /bin/busybox tr "-" "." 2>/dev/null)
+  SUFFIXKERNVER=${KERNVER//*$SEPAR}
+  TOPKERNVER=${KERNVER//.*}
+  LVER=${LVER#$TOPKERNVER.}
+  RC=0
+  TRUNKKERNVER=""
+  MAJORKERNVER=""
+  MINORKERNVER=""
+  EXTRAKERNVER=""
+
+  case $KERNVER  in
+    *.*.*.*.*)
+      echoconsole "$1" "inadmissible Kernel Version format: '$KERNVER' ! May contain only 3 '.' "
+      MAJORKERNVER=${LVER//.*}
+      LVER=${LVER#$MAJORKERNVER.}
+      MINORKERNVER=${LVER//.*}
+      LVER=${LVER#$MINORKERNVER.}
+      EXTRAKERNVER=${LVER%$SUFFIXKERNVER}
+      EXTRAKERNVER=${EXTRAKERNVER%$SEPAR}
+      RC=4
+    ;;
+    *.*.*.*)
+        MAJORKERNVER=${LVER//.*}
+        LVER=${LVER#$MAJORKERNVER.}
+        MINORKERNVER=${LVER//.*}
+        LVER=${LVER#$MINORKERNVER.}
+        EXTRAKERNVER=${LVER//.*}
+        SECEXTRAKERNVER=$EXTRAKERNVER
+        if [ "$(echo $MINORKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" != "" ]; then
+           EXTRAKERNVER=${MINORKERNVER} #//$SEPAR$SUFFIXKERNVER}
+           MINORKERNVER=""
+           # allow up 10^i -1 = 10**i -1 different subversions
+           for i in 1 2 3 4; do
+             TRUNKKERNVER=${EXTRAKERNVER:0:$i}
+             if [ "$(echo $TRUNKKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" = "" ]; then
+                 #EXTRAKERNVER=${EXTRAKERNVER#$MINORKERNVER}
+                 MINORKERNVER=$TRUNKKERNVER
+             fi
+           done
+           [ $MINORKERNVER ] || MINORKERNVER=0
+           EXTRAKERNVER=${EXTRAKERNVER#$MINORKERNVER}
+           EXTRAKERNVER=${EXTRAKERNVER#$SEPAR}
+           EXTRAKERNVER=$EXTRAKERNVER.$SECEXTRAKERNVER
+        fi
+        SUFFIX="$SUFFIXKERNVER"
+        SUFFIXKERNVER=""
+        for ext in $ALLEXTENTS $ALLSUBEXTENTS; do
+          if `is_substring_of "$ext" "$EXTRAKERNVER" `; then
+            SUFFIXKERNVER="$ext"
+          fi
+        done
+        #if `is_substring_of "$SUFFIXKERNVER" "$EXTRAKERNVER" `; then
+        TRUNKKERNVER=${EXTRAKERNVER%$SUFFIXKERNVER}
+        if [ "$TRUNKKERNVER$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+          SUFFIXKERNVER=""
+        else
+          EXTRAKERNVER=$TRUNKKERNVER
+        fi
+        if [ "$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+          EXTRAKERNVER=${EXTRAKERNVER#$SEPAR}
+          EXTRAKERNVER=${EXTRAKERNVER%$SEPAR}
+          EXTRAKERNVER=${EXTRAKERNVER%$SEPAR$SUFFIXKERNVER}
+          TRUNKKERNVER=${EXTRAKERNVER}${SEPAR}${SUFFIXKERNVER}
+          if [ "$TRUNKKERNVER" = "$EXTRAKERNVER" ]; then
+            EXTRAKERNVER=${TRUNKKERNVER//$SEPAR$SUFFIXKERNVER}
+          fi
+        fi
+    ;;
+    *.*.*)
+      MAJORKERNVER=${LVER//.*}
+      LVER=${LVER#$MAJORKERNVER.}
+      MINORKERNVER=${LVER%$SEPAR$SUFFIXKERNVER}
+      LVER=${LVER#$MINORKERNVER}
+      #[ "$LVER" ] ||  ${LVER#$MINORKERNVER}
+      EXTRAKERNVER=${LVER#$SEPAR}
+      SECEXTRAKERNVER=$EXTRAKERNVER
+      #EXTRAKERNVER=${LVER//$SUFFIXKERNVER}
+      #LVER=${LVER#$SEPAR$EXTRAKERNVER$SEPAR}
+      if [ "$(echo $MINORKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" != "" ]; then
+         EXTRAKERNVER=${MINORKERNVER} #//$SEPAR$SUFFIXKERNVER}
+         MINORKERNVER=""
+         # allow up (10^i) -1 = (10**i) -1 different subversions
+         for i in 1 2 3 4; do
+           TRUNKKERNVER=${EXTRAKERNVER:0:$i}
+           if [ "$(echo $TRUNKKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" = "" ]; then
+               MINORKERNVER=$TRUNKKERNVER
+           fi
+         done
+         [ $MINORKERNVER ] || MINORKERNVER=0
+         EXTRAKERNVER=${EXTRAKERNVER#$MINORKERNVER}
+         EXTRAKERNVER=${EXTRAKERNVER#$SEPAR}
+      fi
+    ;;
+    *.*)
+      MAJORKERNVER=${LVER//$SEPAR*}
+      LVER=${LVER#$MAJORKERNVER$SEPAR$SUFFIXKERNVER}
+      #MINORKERNVER=""
+      #EXTRAKERNVER=""
+    ;;
+    *)
+      echoconsole "$1" "inadmissible Kernel Version format: '$KERNVER' !"
+      echoconsole "$1" "Must contain at least one '.' and not more than three '.' "
+      #MAJORKERNVER=$KERNVER
+      #MINORKERNVER=""
+      #EXTRAKERNVER=""
+      RC=4
+      return $RC
+    ;;
+  esac
+  #
+  if [ "$(echo $MAJORKERNVER | /bin/busybox tr -d [:digit:] 2>/dev/null)" != "" ]; then
+      echoconsole "$1" "inadmissible Kernel Version format: '$KERNVER' ! Major Version must be digit only. "
+      MAJORKERNVER=""
+      MINORKERNVER=""
+      EXTRAKERNVER=""
+      RC=4
+      return $RC
+  fi
+  TRUNKKERNVER=""
+  #if [ "$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+  if `is_substring_of "$EXTRAKERNVER" "$SUFFIXKERNVER" `; then
+     SUFFIX="$SUFFIXKERNVER"
+     SUFFIXKERNVER=""
+     for ext in $ALLEXTENTS $ALLSUBEXTENTS; do
+       if `is_substring_of "$ext" "$EXTRAKERNVER" `; then
+         SUFFIXKERNVER="$ext"
+       fi
+     done
+     TRUNKKERNVER=${EXTRAKERNVER%$SUFFIXKERNVER}
+     if [ "$TRUNKKERNVER$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+       SUFFIXKERNVER=""
+     else
+       EXTRAKERNVER=$TRUNKKERNVER
+     fi
+    if [ "$SUFFIXKERNVER" != "$EXTRAKERNVER" ]; then
+      EXTRAKERNVER=${EXTRAKERNVER#$SEPAR}
+      EXTRAKERNVER=${EXTRAKERNVER%$SEPAR}
+      EXTRAKERNVER=${EXTRAKERNVER%$SEPAR$SUFFIXKERNVER}
+      TRUNKKERNVER=${EXTRAKERNVER}${SEPAR}${SUFFIXKERNVER}
+      if [ "$TRUNKKERNVER" = "$EXTRAKERNVER" ]; then
+        EXTRAKERNVER=${TRUNKKERNVER//$SEPAR$SUFFIXKERNVER}
+      fi
+    fi
+  fi
+
+  #set +x
+  export TOPKERNVER MAJORKERNVER MINORKERNVER EXTRAKERNVER SUFFIXKERNVER
+  echoconsole "$1" "Top Version: '$TOPKERNVER' , Major Version: '$MAJORKERNVER' , Minor Version: '$MINORKERNVER'"
+  echoconsole "$1" "Extra Version: '$EXTRAKERNVER' , Suffix Version: '$SUFFIXKERNVER' "
+  return $RC
+}
+
+#
+set_kernver()
+{
+  KERNVER="$(/bin/busybox cut -f3 -d " " </proc/version 2>/dev/null)"
+  echoconsole "$1" "Kernel Version : '$KERNVER' "
+  export KERNVER
+}
+#
+assign_kernver_signed_file()
+{
+   local EXT ATPATH STEM
+   STEM="*"; ATPATH=""; EXT=""
+   if [ "$3" !=  "" ]; then
+     STEM="$3"
+   fi
+   if [ "$2" !=  "" ]; then
+     EXT="$2"
+   else
+     return 127
+   fi
+   if [ "$1" !=  "" ]; then
+     ATPATH="$1"
+     if [ "$ATPATH" = "/" ]; then ATPATH=""; fi
+   else
+     return 127
+   fi
+   KERNVERFILE=""
+   if [ "`/bin/busybox ls -1  $ATPATH/*$STEM*.$EXT 2>/dev/null`" !=  "" ]; then
+    local KERNVERFILES DELETEDFILES
+    KERNVERFILES=""
+    KERNVERFILES="$(/bin/busybox ls -1 $ATPATH/*$STEM*$TOPKERNVER.$MAJORKERNVER.$MINORKERNVER*.$EXT 2>/dev/null)"
+    if [ "$KERNVERFILES" != "" ]; then
+       KERNVERFILE=`/bin/busybox ls -1 $ATPATH/*$STEM*$KERNVER*.$EXT 2>/dev/null`
+    fi
+    if [ "$KERNVERFILE" != "" ] ; then
+      if [ -e "$KERNVERFILE"  ]; then
+        DELETEDFILES=""
+        for k in $KERNVERFILES; do
+          if  [ "$KERNVERFILE" != "$k" ]; then
+            /bin/busybox rm -f $k 2>/dev/null
+            DELETEDFILES="$DELETEDFILES $k"
+          fi
+        done
+        echofile  "$INITPREF" "unused files deleted :'$DELETEDFILES'"
+        [ "$INITDBG" !=  "" -o "$DEBUG" != "" ] && echofile "$INITPREF" "deleted: $DELETEDFILES"
+        echofile "$INITPREF" "Kept : '$KERNVERFILE'"
+        export KERNVERFILE
+      else
+        echofile "$INITPREF" "File '$KERNVERFILE' does not exist !"
+      fi
+    else
+      echofile "$INITPREF" "File '$KERNVERFILE' for '$KERNVER' not found at '$ATPATH/' !"
+    fi # kernelfile
+   else
+     echofile  "$INITPREF" "No files with name '*$STEM*' and extension '$EXT' found at '$ATPATH/'  !"
+   fi # squashfs files
+}
+#
+purge_unused_kernelmodules()
+{
+  local MODLIST todelete
+  if [ -d $1/lib/modules/$KERNVER  ]; then
+    MODLIST="$(echo $(/bin/busybox ls -1d $1/lib/modules/*  2>/dev/null))"
+    todelete=""
+    for todelete in $MODLIST; do
+      if [ "$todelete" != "$1/lib/modules/$KERNVER" ]; then
+        echoconsole "$2" "removing $todelete"
+        /bin/busybox rm -Rf $todelete
+      fi
+    done
+    return 0
+  else
+    return 1
+  fi
+}
+#
+make_devfs()
+{
+    /bin/busybox mdev -s  2>/dev/null
+    if [ $? -eq 0 ]; then
+      /bin/busybox sync  2>/dev/null
+      echoconsole   "$1" " ...device files created."
+    else
+      echoconsole  "$1" " error in creating device files!"
+      error2ash  $1
+    fi
+}
+#
+assign_busybox_aliases()
+{
+  if [ "$HARDENED_BBALIASES" != "" ]; then
+    for ALIAS in $HARDENED_BBALIASES; do
+      if  `is_not_substring_of "$ALIAS " " $BLACKLISTED_BBALIASES "`; then
+        alias $ALIAS="/bin/busybox $ALIAS"
+        echo "set alias : \" $ALIAS=/bin/busybox $ALIAS \" with '$?'"
+      fi
+    done
+  else
+    HARDENED_BBALIASES="`/bin/busybox --list 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`"
+    export HARDENED_ALIASES
+    [ "$HARDENED_ALIASES" ] && assign_busybox_aliases
+  fi
+  alias dash="/bin/busybox ash"
+}
+#
+# thanks to R.Shingledecker/TinyCore
+# this is a faster solution than with grep
+is_string_in_file()
+{
+  case "$(/bin/busybox cat $2 2>/dev/null)" in
+    *$1*)
+      return 0
+    ;;
+  esac
+  return 1
+}
+#
+is_not_string_in_file()
+{
+  case "$(/bin/busybox cat $2 2>/dev/null)" in
+    *$1*)
+      return 1
+    ;;
+  esac
+  return 0
+}
+#
+# thanks to R.Shingledecker/TinyCore
+# this is a faster solution than with grep
+is_substring_of()
+{
+  case "$2" in
+     *$1*)
+       return 0
+     ;;
+  esac
+  return 1
+}
+#
+is_not_substring_of()
+{
+  case "$2" in
+     *$1*)
+       return 1
+     ;;
+  esac
+  return 0
+}
+#
+
+remove_duplicates_from_string()
+{
+
+  local STRINGVAR STRING DRV
+  if [ "$1" != "" ]; then
+    STRING=""
+    STRINGVAR="$1"
+    for DRV in $STRINGVAR; do
+      if `is_not_substring_of  " $DRV " " $STRING "`; then
+        STRING="$STRING $DRV "
+      fi
+    done
+    echo "$STRING"
+    return 0
+  else
+    echo ""
+    return 127
+  fi
+}
+#
+remove_duplicates_from_global_string()
+{
+
+  local localSTRINGVAR localSTRING tok
+  if [ "$1" != "" ]; then
+    eval localSTRINGVAR="\$$1"
+    localSTRING=""
+    for tok in $localSTRINGVAR; do
+      if `is_not_substring_of  " $tok " " $localSTRING "`; then
+        localSTRING="$localSTRING $tok"
+      fi
+    done
+    localSTRING="$(echo $localSTRING)"
+    if [ "$localSTRING" != "" ]; then
+      localSTRINGVAR="$1=\"`echo $localSTRING`\""
+      eval "$localSTRINGVAR"
+      #export "$1"
+    fi
+    return $?
+  else
+    return 127
+  fi
+}
+#
+remove_global_token_from_global_string()
+{
+  #set -x
+  local localSTRINGVAR localSTRING tok localRMVAR
+  if [ "$1" != "" ]; then
+    eval localRMVAR="\$$1"
+  else
+    return 127
+  fi
+  if [ "$2" != "" ]; then
+    eval localSTRINGVAR="\$$2"
+    localSTRING=""
+    for tok in $localSTRINGVAR; do
+      if  [ " $tok " != " $localRMVAR " ]; then
+        localSTRING="$localSTRING $tok"
+      fi
+    done
+    if [ "$localSTRING" != "" ]; then
+      localSTRINGVAR="$2=\"`echo  $localSTRING`\""
+      eval "$localSTRINGVAR"
+    fi
+    return $?
+  else
+    return 127
+  fi
+}
+#
+remove_token_from_string()
+{
+
+  local STRINGVAR STRING DRV RMVAR
+  if [ "$1" != "" ]; then
+    RMVAR="$1"
+  else
+    return 127
+  fi
+  if [ "$2" != "" ]; then
+    STRING=""
+    STRINGVAR="$2"
+    for DRV in $STRINGVAR; do
+      if  [ " $DRV " != " $RMVAR " ]; then
+        STRING="$STRING $DRV "
+      fi
+    done
+    if [ "$STRING" != "" ]; then
+      echo "$STRING"
+    fi
+    return 0
+  else
+    echo ""
+    return 127
+  fi
+}
+#
+remove_token_from_string_does_not_work()
+{
+  local STRINGVAR STRING DRV RMVAR
+  if [ "$1" != "" ]; then
+    eval RMVAR="\$$1"
+  else
+    return 127
+  fi
+  if [ "$2" != "" ]; then
+    eval STRINGVAR="\$$2"
+    STRING=""
+    for DRV in $STRINGVAR; do
+      if `is_not_substring_of  "$DRV " "$RMVAR "`; then
+        STRING="$STRING $DRV "
+      fi
+    done
+    if [ "$STRING" != "" ]; then
+      STRINGVAR="$2=\" $STRING \""
+      eval "$STRINGVAR"
+    fi
+    return $?
+  else
+    return 127
+  fi
+}
+#
+remove_duplicates_from_string_does_not_work()
+{
+
+  local STRINGVAR STRING DRV
+  if [ "$1" != "" ]; then
+    eval STRINGVAR="\$$1"
+    STRING=""
+    for DRV in $STRINGVAR; do
+      if `is_not_substring_of  " $DRV " " $STRING "`; then
+        STRING="$STRING $DRV "
+      fi
+    done
+    if [ "$STRING" != "" ]; then
+      STRINGVAR="$1=\" $STRING \""
+      eval "$STRINGVAR"
+    fi
+    return $?
+  else
+    return 127
+  fi
+}
+#
+get_partuuids()
+{
+  local DISK BLOCKDEVICES DISKID PARTUUID BYTE1 BYTE2
+  BLOCKDEVICES=""
+  #for DISK in `/bin/busybox ls -1d /sys/block/sd* 2>/dev/null` `/bin/busybox ls -1d /sys/block/hd* 2>/dev/null` `/bin/busybox ls -1d /sys/block/mmcblk* 2>/dev/null` ; do
+  for DISK in `/bin/busybox ls -1d /sys/block/* 2>/dev/null` ; do
+     BLOCKDEVICES="$BLOCKDEVICES `/bin/busybox basename "$DISK" 2>/dev/null` "
+  done
+  DISKID=""
+  for DISK in $BLOCKDEVICES; do
+     PARTUUID=""
+     # extract the partuuid information from partition table
+     DISKID=`/bin/busybox dd if=/dev/$DISK bs=1 count=4  skip=440 2>/dev/null | /bin/busybox hexdump  2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`
+     if [ $? -eq 0 -a "$DISKID" != "" ]; then
+       BYTE1=${DISKID:8:4}
+       BYTE2=${DISKID:13:4}
+       PARTUUID="$BYTE2$BYTE1"
+       # reorder the words containing the partuuid
+       #BYTE1=`echo $DISKID | /bin/busybox cut -f3 -d" " 2>/dev/null`
+       #BYTE2=`echo $DISKID | /bin/busybox cut -f2 -d" " 2>/dev/null`
+       #PARTUUID="$BYTE1$BYTE2"
+     fi
+     echo "$DISK|$PARTUUID"
+  done
+}
+#
+get_blockdev_from_partuuid()
+{
+  if [ "$1" != "" ]; then
+    local SYSBLK DISK BLOCKDEVICES DISKID DISKPNUM DISKPARTUUID PUUID BYTE1 BYTE2
+    DISKPARTUUID="$1"
+    DISKPNUM=$(( ${DISKPARTUUID#*-} ))
+    DISKPARTUUID=${DISKPARTUUID//-*}
+    BLOCKDEVICES=""
+    SYSBLK=""
+    SYSBLK=$(/bin/busybox ls -1d /sys/block/* 2>/dev/null)
+    for DISK in $SYSBLK ; do
+       BLOCKDEVICES="$BLOCKDEVICES ${DISK#/sys/block/} "
+    done
+    DISKID=""
+    for DISK in $BLOCKDEVICES; do
+       # extract the partuuid information from partition table
+       DISKID=$(/bin/busybox dd if=/dev/$DISK bs=1 count=4  skip=440 2>/dev/null | /bin/busybox hexdump  2>/dev/null) # | /bin/busybox tr "\n" " " 2>/dev/null`
+       if [ $? -eq 0 -a "$DISKID" != "" ]; then
+         PUUID=""
+         # reorder the words containing the partuuid
+         BYTE1=${DISKID:8:4}
+         BYTE2=${DISKID:13:4}
+         PUUID="$BYTE2$BYTE1"
+         #BYTE1=`echo $DISKID | /bin/busybox cut -f3 -d " " 2>/dev/null`
+         #BYTE2=`echo $DISKID | /bin/busybox cut -f2 -d " " 2>/dev/null`
+         #PUUID="$BYTE1$BYTE2"
+         if [ "$PUUID" = "$DISKPARTUUID" ]; then
+           echo "/dev/$DISK$DISKPNUM"
+           return 0
+         fi
+       fi
+    done
+    if [ "$DISKID" = "" ]; then
+       echo ""
+       return 1
+    fi
+  else
+    echo ""
+    return 1
+  fi
+}
+#
+get_blockdev_from_pathid()
+{
+  if [ "$1" != "" ]; then
+    local SYSBLK SYSPART SYSPARTNUM SYSBUS SYSDEV SYSTARGET DISK BLOCKDEVICES BDEV BDISK localPATHID DISKPARTID ID BYTE1 BYTE2 TARGET
+    localPATHID="$1"
+    BLOCKDEVICES=""
+    SYSBLK=""
+    SYSDEV=""
+    SYSTARGET=""
+    SYSBUS=""
+    DISK=""
+    BDEV=""
+    BDEV="`/bin/busybox readlink -f /dev/disk/by-id/$localPATHID 2>/dev/null`"
+    if [ "$BDEV" != "" ]; then
+      echo "$BDEV"
+      return 0
+    else
+      echo ""
+      return 3
+    fi
+    case $localPATHID in
+      *:*:*-*:*:*:*)
+         if [ "$PARTNUM" = "" ]; then
+           SYSPART=${localPATHID%-*}
+           SYSPART=${localPATHID#$SYSPART%-}
+           SYSPARTNUM=${SYSPART#part}
+         fi
+         SYSBLK=${localPATHID#*-}
+         SYSBUS=${localPATHID//-$SYSBLK}
+         SYSDEV=${SYSBLK%-*}
+         SYSDEV=${SYSDEV//-*}
+         SYSTARGET=${SYSBLK#$SYSDEV-}
+         SYSTARGET=${SYSTARGET#*-}
+      ;;
+      *)
+         SYSBLK="void"
+      ;;
+    esac
+    if [ "$SYSDEV" != "" -a "$SYSTARGET" != "" ]; then
+      DISK=`/bin/busybox ls -1d /sys/devices/$SYSBUS*/$SYSDEV/*/*/*/$SYSTARGET/ 2>/dev/null`
+      [ "$DISK" != "" ] && BDISK=`/bin/busybox ls -1d  $DISK/scsi_generic/sg* 2>/dev/null`
+      [ "BDISK" != "" ] && BDEV=`/bin/busybox basename "$BDISK" 2>/dev/null`
+      BDEV=/dev/$BDEV
+      if [ "$BDEV" = "/dev/" ]; then
+         BDEV="`/bin/busybox readlink -f /dev/disk/by-path/$localPATHID 2>/dev/null`"
+      fi
+      local DEVNUM var THEDEV BLKID
+      DEVNUM=${BDEV#/dev/sg}
+      BLKID=`/bin/busybox find /sys/block/hd* /sys/block/scd* /sys/block/sd* /sys/block/sr*  2>/dev/null`
+
+      cnt=0
+      THEDEV=""
+      for var in $BLKID; do
+        var=${var#/sys/block/}
+        if [ $cnt -lt $DEVNUM ]; then
+          cnt=$(( $cnt + 1 ))
+        else
+          THEDEV=$var
+          break
+        fi
+      done
+      if [ "$THEDEV" != "" ]; then
+        BDEV=/dev/$THEDEV$PARTNUM
+      fi
+
+      if [ "$BDEV" != "" ]; then
+        echo "$BDEV"
+        return 0
+      else
+        echo ""
+        return 3
+      fi
+    else
+      echo ""
+      return 4
+    fi
+  else
+    echo ""
+    return 127
+  fi
+}
+#
+get_blockdev_from_diskid()
+{
+  if [ "$1" != "" ]; then
+    local SYSBLK DISK BLOCKDEVICES BDEV BDISK localDISKID DISKPARTID ID BYTE1 BYTE2 TARGET
+    localDISKID="$1"
+    BLOCKDEVICES=""
+    SYSBLK=""
+    BDEV="`/bin/busybox readlink -f /dev/disk/by-id/$localDISKID 2>/dev/null`"
+    if [ "$BDEV" != "" ]; then
+      echo "$BDEV"
+      return 0
+    else
+      echo ""
+      return 3
+    fi
+    SYSBLK=$(/bin/busybox find  /sys/devices/pci*/*/ata*/host*/target*/* -name vpd_pg83  -print  2>/dev/null)
+    for DISK in $SYSBLK ; do
+       BLOCKDEVICES="$BLOCKDEVICES $DISK"
+    done
+    DISKPARTID=""
+    BDEV=""
+    BDISK=""
+    for DISK in $BLOCKDEVICES; do
+       # extract the diskid information from /sys/bus/scsi/*
+       ID=`/bin/busybox cat "$DISK" 2>/dev/null`
+
+       #ID=`echo "$ID"  | /bin/busybox cut -c 31-95 2>/dev/null`
+       if [ $? -eq 0 -a "$ID" != "" ]; then
+         TARGET=${ID#/sys/devices/pci*/*/ata*/host*/target*/}
+         TARGET=${TARGET%/vpd_pg83}
+         TARGET=${TARGET//:*}
+         ID=${ID:30:65}
+         SYSBLK=$(echo $ID | /bin/busybox tr  " " "_" 2>/dev/null)
+
+         if `is_substring_of  "$SYSBLK" "$localDISKID"`; then
+           DISKPARTID="$SYSBLK"
+           BDISK="$DISK"
+           DISKPATH=`/bin/busybox dirname "$BDISK" 2>/dev/null`
+           [ "$DISKPATH" != "" ] && BDISK=`/bin/busybox ls -1d  $DISKPATH/scsi_generic/sg* 2>/dev/null`
+           [ "$BDISK" != "" ] && BDEV=`/bin/busybox basename "$BDISK" 2>/dev/null`
+           BDEV=/dev/$BDEV
+           break
+         fi
+       fi
+
+    done
+    if [ "$DISKPARTID" != "" ]; then
+       if [ "$BDEV" = "" -o "$BDEV" = "/dev/" ]; then
+         BDEV="`/bin/busybox readlink -f /dev/disk/by-id/$localDISKID 2>/dev/null`"
+       fi
+       local DEVNUM var THEDEV BLKID
+       DEVNUM=${BDEV#/dev/sg}
+       BLKID=`/bin/busybox find /sys/block/hd* /sys/block/scd* /sys/block/sd* /sys/block/sr*  2>/dev/null`
+       cnt=0
+       THEDEV=""
+       for var in $BLKID; do
+         var=${var#/sys/block/}
+         if [ $cnt -lt $DEVNUM ]; then
+           cnt=$(( $cnt + 1 ))
+         else
+           THEDEV=$var
+           break
+         fi
+       done
+       if [ "$THEDEV" != "" ]; then
+         BDEV=/dev/$THEDEV$PARTNUM
+       fi
+       if [ "$BDEV" != "" ]; then
+         echo "$BDEV"
+         return 0
+       else
+         echo ""
+         return 3
+       fi
+    else
+       echo ""
+       return 4
+    fi
+  else
+    echo ""
+    return 127
+  fi
+}
+#
+get_partuuid_from_blockdev()
+{
+  if [ "$1" != "" ]; then
+    local SYSBLK DISK DISKID DISKPNUM DISKPARTUUID PUUID BYTE1 BYTE2
+    DISKPARTUUID=""
+    SYSBLK="$1"
+    if [ -e $SYSBLK ]; then
+      DISK=${SYSBLK#/dev/}
+      [ "$DISK" = "$SYSBLK" ] && DISK=${SYSBLK#/sys/block/}
+      DISKPNUM=$(echo $DISK | /bin/busybox tr -d [:alpha:] 2>/dev/null)  #( ${DISKPARTUUID#*-} ))
+      DISK=${DISK//$DISKPNUM}
+      # extract the partuuid information from partition table
+      if `is_substring_of "$DISK " "sr scd "`; then
+         DISK="$DISK$DISKPNUM"
+         DISKPNUM=""
+      fi
+      # DISKLABEL are the 32 bytes from : dd if=/dev/sr0 bs=1 skip=32808 count=32
+      # PARTUUIDs are hex numbers of certain partitions: MS-DOS Partition tables
+      DISKID=$(/bin/busybox dd if=/dev/$DISK bs=1 count=4  skip=440 2>/dev/null | /bin/busybox hexdump  2>/dev/null)
+      if [ $? -eq 0 -a "$DISKID" != "" ]; then
+        PUUID=""
+        # reorder the words containing the partuuid
+        BYTE1=${DISKID:8:4}
+        BYTE2=${DISKID:13:4}
+        PUUID="$BYTE2$BYTE1"
+        if [ "$PUUID" != "" ]; then
+          if [ "$DISKPNUM" != "" ]; then
+            if [ $DISKPNUM -lt 10 ]; then
+              US="-0"
+            else
+              US="-"
+            fi
+          else
+            US=""
+          fi
+          echo "$PUUID$US$DISKPNUM"
+          return 0
+        else
+          echo ""
+          return 1
+        fi
+      fi
+      if [ "$DISKID" = "" ]; then
+        echo ""
+        return 1
+      fi
+    else
+      echo ""
+      return 1
+    fi
+  else
+    echo ""
+    return 1
+  fi
+}
+#
+get_label_from_optical_blockdevice()
+{
+  if [ "$1" != "" ]; then
+    local SYSBLK DISK DISKID DISKLBL DISKPNUM DISKPARTUUID PUUID BYTE1 BYTE2
+    DISKPARTUUID=""
+    SYSBLK="$1"
+    if [ -e $SYSBLK ]; then
+      DISK=${SYSBLK#/dev/}
+      [ "$DISK" = "$SYSBLK" ] && DISK=${SYSBLK#/sys/block/}
+      DISKPNUM=$(echo $DISK | /bin/busybox tr -d [:alpha:] 2>/dev/null)  #( ${DISKPARTUUID#*-} ))
+      DISK=${DISK//$DISKPNUM}
+      # extract the partuuid information from partition table
+      if `is_substring_of "$DISK " "sr scd "`; then
+         DISK="$DISK$DISKPNUM"
+         DISKPNUM=""
+      fi
+      DISKLBL=$(/bin/busybox dd if=/dev/$DISK bs=1 skip=36904 count=32 2>/dev/null)
+      [ "$DISKLBL" != "" ] || DISKLBL=$(/bin/busybox dd if=/dev/$DISK bs=1 skip=34856 count=32 2>/dev/null)
+      [ "$DISKLBL" != "" ] || DISKLBL=$(/bin/busybox dd if=/dev/$DISK bs=1 skip=32808 count=32 2>/dev/null)
+      # DISKLABEL are the 32 bytes from : dd if=/dev/sr0 bs=1 skip=32808 count=32
+      # PARTUUIDs are hex numbers of certain partitions: MS-DOS Partition tables
+      DISKID=$(/bin/busybox dd if=/dev/$DISK bs=1 count=4  skip=440 2>/dev/null | /bin/busybox hexdump  2>/dev/null)
+      if [ $? -eq 0 -a "$DISKID" != "" ]; then
+        PUUID=""
+        # reorder the words containing the partuuid
+        BYTE1=${DISKID:8:4}
+        BYTE2=${DISKID:13:4}
+        PUUID="$BYTE2$BYTE1"
+        if [ "$PUUID" != "" ]; then
+          if [ "$DISKPNUM" != "" ]; then
+            if [ $DISKPNUM -lt 10 ]; then
+              US="-0"
+            else
+              US="-"
+            fi
+          else
+            US=""
+          fi
+          echo "$PUUID$US$DISKPNUM"
+          return 0
+        else
+          echo ""
+          return 1
+        fi
+      fi
+      if [ "$DISKLBL" != "" ]; then
+        export LABEL="$DISKLBL"
+      fi
+      if [ "$DISKID" = "" ]; then
+        echo ""
+        return 1
+      fi
+    else
+      echo ""
+      return 1
+    fi
+  else
+    echo ""
+    return 1
+  fi
+}
+#
+verify_ptable()
+{
+  if [ "$PTABLE" != "" ]; then
+     return 0
+  else
+     return 1
+  fi
+}
+##
+read_fdiskline()
+{
+  FS=""
+  STARTSECT=""
+  #if [ "$2" = "*" ]; then shift; fi
+  export STARTSECT="$2"
+  export FS="$5"
+}
+#
+read_partitiontable()
+{
+    local DISKID PTABLE DOSTABLE PART1 PART2 PART3 PART4
+    if [ "$1" = "" ]; then return 127; fi
+    if [ "$2" = "verify" ]; then
+       PTABLE=$(/bin/busybox dd if=$1  bs=1 count=512  skip=0 2>/dev/null)
+       verify_ptable "$PTABLE"
+    fi
+    #echo "PTABLE=$PTABLE"
+    #echo $PTABLE | /bin/busybox hexdump -C  2>/dev/null
+    #DOSTABLE=$(echo $PTABLE | cut -b 446- ) #${PTABLE:446:64}   #
+    #echo "DOSTABLE=$DOSTABLE"  #
+    #echo $DOSTABLE | /bin/busybox hexdump -C  2>/dev/null
+    #DOSTABLE=${PTABLE:0:445} #${PTABLE:446:64}   #
+    #echo "DOSTABLE=$DOSTABLE"  #
+    #DOSTABLE=${PTABLE#$DOSTABLE}
+    #echo $DOSTABLE | /bin/busybox hexdump -C  2>/dev/null
+    #PART1=${DOSTABLE:0:15}
+    #echo $PART1  #| /bin/busybox hexdump -C  2>/dev/null
+    #PART2=$(echo ${PTABLE:17:32} | /bin/busybox hexdump -C  2>/dev/null)
+    #echo "$PART2"
+    #PART3=$(echo ${PTABLE:33:48} | /bin/busybox hexdump -C  2>/dev/null)
+    #echo "$PART3"
+    #PART4=$(echo ${PTABLE:49:64} | /bin/busybox hexdump -C  2>/dev/null)
+    #echo "$PART4"
+    DOSTABLE=`/bin/busybox dd if=$1   bs=1 count=64  skip=446  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "DOSTABLE="  #
+    echo "$DOSTABLE"  #
+    PART1=`/bin/busybox dd if=$1   bs=1 count=16  skip=446  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "PART1="
+    echo "$PART1"
+    PART2=`/bin/busybox dd if=$1   bs=1 count=16  skip=462  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "PART2="
+    echo "$PART2"
+    PART3=`/bin/busybox dd if=$1   bs=1 count=16  skip=478  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "PART3="
+    echo "$PART3"
+    PART4=`/bin/busybox dd if=$1   bs=1 count=16  skip=494  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "PART4="
+    echo "$PART4"
+    for line in $DOSTABLE; do
+       :
+    done
+
+    DISKID=$(echo ${PTABLE:440:4} | /bin/busybox hexdump  2>/dev/null)
+    if [ $? -eq 0 -a "$DISKID" != "" ]; then
+      PUUID=""
+      # reorder the words containing the partuuid
+      BYTE1=${DISKID:8:4}
+      BYTE2=${DISKID:13:4}
+      PUUID="$BYTE2$BYTE1"
+    fi
+    export PUUID
+    # TODO: set geometry and size variables from partitiontable
+}
+#
+DOSTABLE=""
+#
+read_msdos_partitiontable()
+{
+    local DISKID PTABLE  PART1 PART2 PART3 PART4
+    if [ "$1" = "" ]; then return 127; fi
+    if [ -e  "$1" ]; then
+
+    PTABLE=$(/bin/busybox dd if=$1  bs=1 count=512  skip=0 2>/dev/null)
+    #export PTABLE
+    #echo $PTABLE
+    DOSTABLE=`/bin/busybox dd if=$1   bs=1 count=64  skip=446  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    #echo $DOSTABLE
+    export DOSTABLE
+    export FS=${DOSTABLE:8:2}
+    #echo $FS
+    #DOSTABLE=$(echo ${PTABLE:446:63} | /bin/busybox hexdump 2>/dev/null)
+    #echo $DOSTABLE
+    #DISKID=$(echo ${PTABLE:440:4} | /bin/busybox hexdump  2>/dev/null)
+    DISKID=`/bin/busybox dd if=$1   bs=1 count=4  skip=440  2>/dev/null| /bin/busybox hexdump  2>/dev/null`
+    if [ $? -eq 0 -a "$DISKID" != "" ]; then
+      PUUID=""
+      # reorder the words containing the partuuid
+      BYTE1=${DISKID:8:4}
+      BYTE2=${DISKID:13:4}
+      PUUID="$BYTE2$BYTE1"
+    fi
+    #echo $PUUID
+    export PUUID
+    #echo "$PUUID <-> $DISKID"
+    #else
+    fi
+    # TODO: set geometry and size variables from partitiontable
+}
+#
+set_disk_parameters()
+{
+  #set -x
+  local DEV PNUM PARTDEV fdiskline DISKID OLDMAINDEV MAINDEV line1 line2 TOK SSBYTE0 SSBYTE1 SSBYTE2 SSBYTE3
+  DEV=""
+  PARTDEV=""
+  PARTDEVS=""
+  MAINDEV=""
+  STARTSECT=""
+  line1=""
+  line2=""
+  TOK=""
+  OLDMAINDEV=""
+  PUUID=""
+  PNUM=1
+  #BLOCKDISKS="`/bin/busybox ls -1d /sys/block/sd*/sd* 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`"
+  BLOCKDEVS="`/bin/busybox ls -1d /sys/block/sd* 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`"
+  for DEV in $BLOCKDEVS; do
+    PARTDEV="`/bin/busybox basename $DEV 2>/dev/null`"
+    PARTDEVS="$PARTDEVS $PARTDEV"
+    MAINDEV="/dev/${PARTDEV:0:3}"
+    #PNUM=/dev/${PARTDEV}
+    #PNUM=${PNUM#$MAINDEV}
+    PUUID=""
+    SECTSIZE=`/bin/busybox blockdev --getss "$MAINDEV" 2>/dev/null`
+    if [ "$SECTSIZE" = "" ]; then SECTSIZE=512; fi
+    read_msdos_partitiontable $MAINDEV
+    #export
+    PNUM=1
+    for line in $DOSTABLE; do
+      if [ "$line" != "00000000000000000000000000000000" ]; then
+        SSBYTE0=${line:16:2}
+        SSBYTE1=${line:18:2}
+        SSBYTE2=${line:20:2}
+        SSBYTE3=${line:22:2}
+        #echo "sectorbytes: $SSBYTE3$SSBYTE2$SSBYTE1$SSBYTE0"
+        STARTSECT=$(( 0x$SSBYTE3$SSBYTE2$SSBYTE1$SSBYTE0 ))
+        #echo "Startsector of partition $PNUM : $STARTSECT"
+        FS=${line:8:2}
+        LABELCONTAINER=`/bin/busybox dd if=$MAINDEV bs=$SECTSIZE skip=$STARTSECT count=4 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+        #echo "$LABELCONTAINER"
+        case $FS in
+          6|06)
+              line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000020" 2>/dev/null)
+              line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000030" 2>/dev/null)
+              LABELDD="$(echo "${line1:71:6}${line2:61:6}" | /bin/busybox tr -d " \.\`\+\\" 2>/dev/null)"
+          ;;
+          c|0c)
+              line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000040" 2>/dev/null)
+              line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000050" 2>/dev/null)
+              LABELDD="$(echo "${line1:68:8}${line2:61:2}" | /bin/busybox tr -d " \.\`\+\\" 2>/dev/null)"
+          ;;
+          83)
+              line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000470" 2>/dev/null)
+              line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000480" 2>/dev/null)
+              LABELDD="$(echo "${line1:69:8}${line2:61:9}" | /bin/busybox tr -d " /\.\`\+\\" 2>/dev/null)"
+          ;;
+        esac
+        export LABELDD
+        TOK="LABEL_$PARTDEV$PNUM=\"${LABELDD}\""
+        eval "$TOK"
+        export "LABEL_$PARTDEV$PNUM"
+        TOK="PUUID_$PARTDEV$PNUM=\"${PUUID}-0${PNUM}\""
+        eval "$TOK"
+        export "PUUID_$PARTDEV$PNUM"
+        LABELCONTAINER=""
+        TOK=""
+        PNUM=$(( $PNUM + 1 ))
+      fi
+    done
+    TOK="PUUID_$PARTDEV=\"${PUUID}\""
+    eval "$TOK"
+    export "PUUID_$PARTDEV"
+    TOK=""
+  done
+  export PARTDEVS
+}
+#
+
