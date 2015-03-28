@@ -57,7 +57,7 @@ if [ "$EXTENT" != "" ]; then INITRD="$INITRD-$EXTENT"; fi
  echo "Making initrd File with compression '$COMPEXTENT' " 
  echo "BusyBox does understand only gzip compression " 
  echo "If your selected compression is different, "
- echo "than there will be your system routines used!" 
+ echo "then there will be your system routines used!" 
  case $COMPEXTENT in 
    xz)
      XZ=/usr/bin/xz
