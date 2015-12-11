@@ -1,0 +1,90 @@
+#!bin/busybox ash
+#read_initrdvar_file
+EXTENT="$2"
+MODF=0
+ALLMODF=""
+COMPEXTENT="$1"
+ISF=0
+MKEXTENT="gz"
+ALLINITSCRIPTS=""
+INITSCRIPTS=""
+ALLMKEXTENTS="gz xz bz lz"
+THISDIR="`bin/busybox pwd`"
+WKDIR="$3"
+CONFIGDIR="" # ./etc/config"
+if [ -e general-functions ]; then
+  . general-functions
+  inline_external_file "yainitdefaults"
+else
+  INITRD=yautiny
+fi
+
+
+#if `is_not_substring_of "$EXTENT " "$ALLEXTENTS " `; then 
+#  EXTENT=""
+#fi
+if [ "$EXTENT" = "" ]; then
+  EXTENT=""
+fi 
+
+
+if `is_not_substring_of "$COMPEXTENT " "$ALLMKEXTENTS " `; then 
+  COMPEXTENT=$MKEXTENT
+fi
+if [ "$COMPEXTENT" = "" ]; then
+  COMPEXTENT=$MKEXTENT
+fi 
+
+
+if [ "$WKDIR" != "" ]; then 
+ if [ "$WKDIR" != "$THISDIR" ]; then 
+  THISDIR=$WKDIR
+ fi
+else
+  WKDIR=$THISDIR
+fi
+ cd $WKDIR
+
+if [ "$INITRD" = "" ]; then
+  INITRD=yainit0
+fi 
+
+if [ "$EXTENT" != "" ]; then INITRD="$INITRD-$EXTENT"; fi 
+
+ echo "  initrd name = $INITRD"
+ bin/busybox rm ../$INITRD.$COMPEXTENT
+ bin/busybox sync
+ echo "Making initrd File with compression '$COMPEXTENT' " 
+ echo "BusyBox does understand only gzip compression " 
+ echo "If your selected compression is different, "
+ echo "then there will be your system routines used!" 
+ case $COMPEXTENT in 
+   xz)
+     XZ=/usr/bin/xz
+     echo "using '$XZ' for compression!"
+     bin/busybox find . | bin/busybox cpio -o -H newc | $XZ -zfe9 > ../$INITRD.xz
+   ;;
+   bz*)
+     BZ=/usr/bin/bzip2
+     echo "using '$BZ' for compression!"
+     bin/busybox find . | bin/busybox cpio -o -H newc | $BZ  -zf9 > ../$INITRD.bz2
+   ;;
+   gz)
+     echo "using 'bin/busybox gzip' for compression!"
+     bin/busybox find . | bin/busybox cpio -o -H newc | bin/busybox gzip -f > ../$INITRD.gz
+   ;;
+   lzm*)
+     LZM=/usr/bin/lzma
+     echo "using '$LZM' for compression!"
+     bin/busybox find . | bin/busybox cpio -o -H newc | $LZM  -9 > ../$INITRD.lzm
+   ;;
+   *)
+     echo "unrecognized extent for compression found : '$COMPEXTENT' !"
+   ;;
+ esac
+ RC=$?
+ bin/busybox sync
+
+
+#
+

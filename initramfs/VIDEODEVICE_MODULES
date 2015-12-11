@@ -1,0 +1,11 @@
+#
+DEFAULT_SYSVIDEODRIVERS="thermal_sys video i2c_core i2c_dev i2c_algo_bit agpgart"
+#
+DEFAULT_LEGACYVIDEO=" vesafb agpgart ali_agp ati_agp amd_k7_agp amd64_agp efficeon_agp intel_agp intel_gtt nvidia_agp sis_agp sworks_agp via_agp"
+ATIVIDEODRIVERS="radeon ttm drm drm_kms_helper r128 ati_agp amd_k7_agp amd64_agp vesafb"
+INTELVIDEODRIVERS="i2c_i801 i915 i810 cfbcopyarea cfbimgblt cfbfillrect ttm drm drm_kms_helper i460_agp intel_agp intel_gtt vesafb"
+#
+NVIDIAVIDEODRIVERS="nouveau ttm drm drm_kms_helper nvidia_agp vesafb"
+#
+DEFAULT_VIDEODRIVERS="ch7006 sil164 tda998x drm_kms_helper drm drm_usb ttm r128 radeon mga i915 i810 mgag200 vmwgfx nouveau gma500_gfx qxl vmwgfx cfbcopyarea cfbimgblt cfbfillrect agpgart ali_agp ati_agp amd_k7_agp amd64_agp hp_agp i460_agp intel_agp intel_gtt nvidia_agp sis_agp via_agp vesafb "
+#

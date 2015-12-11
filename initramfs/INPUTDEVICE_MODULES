@@ -1,0 +1,32 @@
+#
+DEFAULT_SYSINPUTDRIVERS="input_core input input_compat input_mt ff_core ff_memless input_polldev sparse_keymap matrix_keymap mousedev joydev evdev serio i8042 serport ct82c710 pcips2 ps2mult libps2 serio_raw"      # evbug apm_power
+DEFAULT_SYSSERIOINPUTDRIVERS="serio i8042 parport parkbd serport ct82c710 pcips2 ps2mult libps2 serio_raw altera_ps2 arc_ps2 rpckbd sa1111ps2 ambakmi at32psif q40kbd gscps2 hp_sdc hp_sdc_mlc hil_mlc maceps2 ams_delta_serio xilinx_ps2 apbps2 olpc_apsp"
+#
+ALL_KEYBOARDDDRIVERS="adp5588_keys adp5589_keys amikbd atakbd atkbd bf54x_keys cros_ec_keyb davinci_keyscan ep93xx_keypad goldfish_events gpio_keys gpio_keys_polled tca6416_keypad tca8418_keypad hil_kbd hilkbd imx_keypad jornada680_kbd jornada720_kbd lkkbd lm8323 lm8333 locomokbd lpc32xx_keys maple_keyb matrix_keypad max7359_keypad mcs_touchkey mpr121_touchkey newtonkbd nomadik_ske_keypad nspire_keypad omap_keypad omap4_keypad opencores_kbd pmic8xxx_keypad pxa27x_keypad pxa930_rotary qt1070 qt2160 samsung_keypad sh_keysc spear_keyboard stmpe_keypad stowaway sunkbd tc3589x_keypad tegra_kbc tnetv107x_keypad twl4030_keypad xtkbd w90p910_keypad"
+#
+DEFAULT_KEYBOARDDRIVERS="atkbd gpio_keys gpio_keys_polled lkkbd lm8323 lm8333 matrix_keypad newtonkbd opencores_kbd  stowaway"
+#
+ALL_MOUSEDRIVERS="appletouch bcm5974 cyapa gpio_mouse inport logibm pc110pad psmouse sermouse synaptics_i2c synaptics_usb vsxxxaa amimouse atarimouse maplemouse navpoint pxa930_trkball rpcmouse psmouse_base synaptics alps elantech hgpk logips2pp lifebook sentelic trackpoint touchkit_ps2 cypress_ps2"
+#
+DEFAULT_MOUSEDRIVERS="$ALL_MOUSEDRIVERS"
+#
+ALL_TOUCHPADDRIVERS="ad7877 ad7879 ad7879_i2c ad7879_spi ads7846 atmel_mxt_ts auo_pixcir_ts bu21013_ts cy8ctmg110_ts cyttsp_core cyttsp_i2c cyttsp_i2c_common cyttsp_spi dynapro edt_ft5x06 hampshire gunze eeti_ts elo fujitsu_ts ili210x inexio max11801_ts mc13783_ts mcs5000_ts mms114 mtouch mk712 htcpen usbtouchscreen penmount pixcir_i2c_ts st1232 ti_am335x_tsc touchit213 touchright touchwin tsc40 tsc2005 tsc2007 ucb1400_ts wacom_w8001 wacom_i2c wm97xx_ts w90p910_ts tps6507x_ts wm97xx_core 88pm860x_ts ad7877 ad7879 ad7879_i2c ad7879_spi ads7846 atmel_mxt_ts atmel_tsadcc auo_pixcir_ts bu21013_ts cy8ctmg110_ts cyttsp_core cyttsp_i2c cyttsp_i2c_common cyttsp_spi cyttsp4_core cyttsp4_i2c cyttsp_i2c_common cyttsp4_spi da9034_ts da9052_tsi dynapro edt_ft5x06 hampshire gunze eeti_ts elo egalax_ts fujitsu_ts ili210x inexio intel_mid_touch lpc32xx_ts max11801_ts mc13783_ts mcs5000_ts migor_ts mms114 mtouch mk712 hp680_ts_input jornada720_ts htcpen usbtouchscreen pcap_ts penmount pixcir_i2c_ts s3c2410_ts st1232 stmpe_ts ti_am335x_tsc tnetv107x_ts touchit213 touchright touchwin tsc40 tsc2005 tsc2007 ucb1400_ts wacom_w8001 wacom_i2c wm831x_ts wm97xx_ts wm9705 wm9712 wm9713 atmel_wm97xx mainstone_wm97xx zylonite_wm97xx w90p910_ts tps6507x_ts"
+#
+DEFAULT_TOUCHPADDRIVERS="$ALL_TOUCHPADDRIVERS"
+#
+ALL_TABLETDRIVERS="acecad aiptek gtco hanwang kbtab wacom wacom_wac wacom_sys"
+#
+DEFAULT_TABLETDRIVERS="$ALL_TABLETDRIVERS"
+#
+DEFAULT_USBINPUTDRIVERS="hid hid_generic mac_hid usbmouse usbkbd usbhid synaptics_i2c synaptics_usb synaptics gpio_mouse "
+#
+#
+DEFAULT_HIDDRIVERS="uhid hid_generic hid_a4tech hid_axff hid_apple hid_appleir hid_aureal hid_belkin hid_cherry hid_chicony hid_cypress hid_dr hid_emsff hid_elecom hid_ezkey hid_gyration hid_holtek_kbd hid_holtek_mouse hid_holtekff hid_hyperv hid_icade hid_kensington hid_keytouch hid_kye hid_lcpower hid_lenovo_tpkbd hid_logitech hid_logitech_dj hid_magicmouse hid_microsoft hid_monterey hid_multitouch hid_ntrig hid_ortek hid_prodikeys hid_pl hid_petalynx hid_picolcd hid_primax hid_roccat hid_roccat_common hid_roccat_arvo hid_roccat_isku hid_roccat_kone hid_roccat_koneplus hid_roccat_konepure hid_roccat_kovaplus hid_roccat_lua hid_roccat_pyra hid_roccat_savu hid_saitek hid_samsung hid_sjoy hid_sony hid_speedlink hid_steelseries hid_sunplus hid_gaff hid_thingm hid_tmff hid_tivo hid_topseed hid_twinhan hid_uclogic hid_zpff hid_zydacron hid_wacom hid_waltop hid_wiimote hid_sensor_hub usbhid usbkbd usbmouse"
+#
+
+#
+DEFAULT_INPUTDRIVERS="$DEFAULT_SYSINPUTDRIVERS $DEFAULT_SYSSERIOINPUTDRIVERS $DEFAULT_KEYBOARDDRIVERS $DEFAULT_MOUSEDRIVERS $DEFAULT_USBINPUTDRIVERS"
+#
+DEFAULT_SHORTINPUTDRIVERS="atkbd psmouse libps2 i8042 serio psmouse_base logips2pp alps serport serio_raw "
+#
+DEFAULT_LEGACYINPUTDRIVERS="$DEFAULT_SERIALDRIVERS $DEFAULT_SYSSERIOINPUTDRIVERS $ALL_MOUSEDRIVERS $ALL_KEYBOARDDRIVERS"

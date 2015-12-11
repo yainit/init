@@ -1,14 +1,7 @@
-                   Withdrawn
-###################################################
-Sorry, they did it!
-During the electoral campaign in Spain, my bank account was 
-touched by the generally propagated weirdness and money was
-withdrawn by Spanish authorities 
-without preceding announcement or any justification. 
+            INIT
+============================================
 
-For your comprehension that free software is not to publish
-under the circumstances of attacks against the European social
-conventions, many thanks!   
-
-2015-05-22
-Dieter Miosga    
+This repository contains the actually used version of
+the initramfs folder, used to generate the initrd file
+to place together with the YaIniT kernel into the folder
+wherefrom you want to have invoked the system start by your bootloader.  
