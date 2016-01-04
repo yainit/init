@@ -1,0 +1,126 @@
+#!/bin/busybox ash
+#  YaIniT : Yet an almost universal INIT Tool 
+#  Universal INIT with busybox > 1.14.3
+#  My optimization in the parameters interpretation time, execution time, 
+#     portability and (re)usability 
+#  (C) Dieter Miosga , 2008-2016-01-05, dmiosga6200@gmail.com
+#     ###  ! / bin / ash
+#
+#   PHASE 0
+#   1. report busybox ash brought up a runnable init and is running in initramfs.
+#      Output first to a file in initramfs.
+#   2. Check parameters passed to init invocation and branch 
+#   3. read in functions
+#
+# establish the header different from kernel messages
+# since busybox 1.22.1 this works:
+[ "$PHASE" != "" ] || PHASE=0
+THIS="$0"
+INITPREF="[ $PHASE$THIS ]:"
+# where the configuration files are, if in subdirectory
+# currently, busybox ash accepts with 'source' only files in the same directory  
+CONFIGDIR="."
+# read in general functions to make the INIT operable comfortably
+if [ -e  general-functions ]; then
+  . general-functions
+else
+  if [ -e initscripts.tar.* ]; then
+    bin/busybox tar -xf initscripts.tar.* 2>/dev/null
+  fi
+  if [ -e  general-functions ]; then
+    .  general-functions
+  else
+    /bin/busybox sync      2>/dev/null 
+    /bin/busybox mdev -s   2>/dev/null 
+    /bin/busybox sync      2>/dev/null 
+    echo  "$INITPREF Can't continue : Broken init! Missing file: general-functions "
+    echo  "$INITPREF Please correct it at the /bin/busybox ash shell prompt "
+    echo  "$INITPREF by creating this file and press <ctrl-d> afterwards or "
+    echo  "$INITPREF press <ctrl-alt-del> for reboot or hard reset system......"
+    /bin/busybox ash < /dev/console
+  fi
+fi
+# let's see wether we can use them for recursing:   
+# Parameters to INIT. 
+# Normally there aren't any, but UBUNTU's kernel patches pass them
+# to init directly,
+# and I need them for recursive invocation of init
+INITPARAMETERS="$@"
+# system wide initial default verbosity
+VERBOSE=3
+#
+if `is_substring_of  " branchparm=branch-" " $INITPARAMETERS"`; then
+#
+  if [ "$1" !=  "" ]; then 
+     eval "$1"  2>/dev/null
+  fi
+  BRANCH_DIRECT=$branchparm
+  #PHASE=4
+  INITPREF="[ $PHASE$THIS ]:"
+  echoconsole   "$INITPREF" "System Kernel alive! Reentered into init boot shell script,...."
+  export INITPREF CONFIGDIR VERBOSE
+  # read in necessary functions
+  inline_external_file  "initsys-functions"
+  #inline_external_file  "$BRANCH_DIRECT-functions"
+  if [ "$3" != "" ]; then
+    BRANCHDEV="$3"
+    inline_external_file  "dev$BRANCHDEVrc"
+  else
+    inline_external_file  "devblockrc"
+  fi
+#
+else # the big ELSE     
+  #
+  MSGFILE="initmsg"
+  echo "$INITPREF  System Kernel alive! Entered into init boot shell script,...."
+  export INITPARAMETERS VERBOSE MSGFILE PHASE INITPREF CONFIGDIR
+  #  original regular first boot without reinvocation 
+  # read in necessary functions
+  inline_external_file  "initvariables"
+  inline_external_file  "initrd-functions"  
+  inline_external_file  "initsys-functions"
+  #
+  #   PHASE 1
+  #   1. read in basic system variables and kernel parameters
+  #   2. read in system architecture parameters 
+  #   2. build root filesytem tree with necessary and usual directories 
+  #   3. mount initial filesystems (sysfs, procfs, devtmpfs, debugfs,....) and assign variables
+  #   4. assign parameters from kernel commandline and set system variables appropriately
+  #    
+  PHASE=1
+  INITPREF="[ $PHASE$THIS ]:"
+  setup_configurations
+  #
+  # no need to pass phase 2 and 3 designated for boot to disk 
+  # if root device points to RAM or Network or is not specified at all
+  check_for_branch "$INITPREF"
+  #
+  #  PHASE 2
+  #  1. if busybox is optimizable and noauto is not specified, do it
+  #  2. extract kernel modules if any hidden in squashfs or tar archives in initramfs 
+  #  3. bring up device filesystem
+  #
+  PHASE=2
+  INITPREF="[ $PHASE$THIS ]:"
+  setup_system
+  #
+  #   PHASE 3
+  #  1. set busybox symlinks for all applets
+  #  2. load modules as specified and/or necessary, if any installed in initramfs
+  #  3. make recognizable the root device parameter
+  #    
+  PHASE=3
+  INITPREF="[ $PHASE$THIS ]:"
+  boot_on
+  #
+  #  4. branch out then for switch to rootfs or continue boot to RAM
+  branch_out "$INITPREF"  
+  #
+fi
+#
+echo "$INITPREF Oooops! This statement should be never reached!"
+echo "$INITPREF due to previous error, terminating initramfs boot shell... System crashes!"
+#
+exit 0
+#  end of init   characters=4137  words=607  lines=122   
+

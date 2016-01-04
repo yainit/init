@@ -1,0 +1,533 @@
+#
+#  File system funcions for YaIniT Universal INIT with busybox
+#  (C) Dieter Miosga , 2008-2016-01-01, dmiosga6200@gmail.com
+#
+#set -x
+#DELAY=delay
+#
+#
+mount_procfs_sysfs()
+{
+  local MOUNTED
+
+  export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin:/:.
+  MOUNTED=""
+
+  if [ -e /proc/mounts ]; then
+    MOUNTED=`/bin/busybox cat /proc/mounts 2>/dev/null`
+  else
+    MOUNTED=`/bin/busybox mount 2>/dev/null`
+  fi
+  
+  if [ "$MOUNTED" = "" ]; then
+     /bin/busybox mkdir -p /proc    2>/dev/null
+     /bin/busybox mount -n -t proc proc  /proc    2>/dev/null
+     /bin/busybox sync 2>/dev/null
+     /bin/busybox mkdir -p /sys   2>/dev/null
+     /bin/busybox mount -n -t sysfs sysfs /sys   2>/dev/null
+     /bin/busybox sync 2>/dev/null
+     /bin/busybox mount -o remount,rw -t rootfs rootfs  /  2>/dev/null  
+     /bin/busybox sync 2>/dev/null
+     export ECHOTEXT="$ECHOTEXT
+$INITPREF mount commands issued for procfs, sysfs, rootfs, continuing...."
+  fi
+
+  #  now prove the iffy cases
+  if `is_not_string_in_file  "proc"  "/proc/mounts"`; then 
+      /bin/busybox mount -n -t proc proc /proc    2>/dev/null
+      if [ $? -ne 0 ]; then
+        #echoconsole "$1" " unable to mount /proc ,retrying ...."
+        /bin/busybox mkdir -p /proc    2>/dev/null
+        /bin/busybox mount -n -t proc proc /proc    2>/dev/null
+        if [ $? -ne 0 ]; then
+          export ECHOTEXT="$ECHOTEXT 
+$INITPREF unable to mount /proc: giving up." 
+	        #error2ash "$1"
+        fi
+      else
+        export ECHOTEXT="$ECHOTEXT 
+$INITPREF ...procfs /proc is up and mounted" 
+      fi 
+  fi
+
+  #
+  if `is_not_string_in_file  "sysfs"  "/proc/mounts"`; then   
+      /bin/busybox mount -n -t sysfs sysfs /sys   2>/dev/null
+      if [ $? -ne 0 ]; then
+        #3echoconsole "$1" " unable to mount /sys ,retrying ...."
+        /bin/busybox mkdir -p /sys   2>/dev/null
+        /bin/busybox mount -n -t sysfs sysfs /sys   2>/dev/null
+        if [ $? -ne 0 ]; then
+          export ECHOTEXT="$ECHOTEXT 
+$INITPREF unable to mount /sys: giving up."
+          #error2ash "$1"
+        fi
+      else
+        export ECHOTEXT="$ECHOTEXT 
+$INITPREF ...sysfs  /sys is up and mounted"
+      fi
+  fi
+
+  if `is_not_string_in_file  "rootfs"  "/proc/mounts"`; then 
+    # for the case rootfs in INITRAMFS is unaccessible or we forgot rw boot option 
+	  /bin/busybox mount  -o remount,rw -t rootfs rootfs /  2>/dev/null   
+	  if [ $? -ne 0 ]; then
+      export ECHOTEXT="$ECHOTEXT 
+$INITPREF unable to mount root / in  read-write mode!"
+	  fi
+  fi
+}
+#
+unmount_procfs_sysfs()
+{
+  local MOUNTED RC
+
+  export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin:/:.
+  MOUNTED=""
+  ECHOTEXT=""
+  if [ -e /proc/mounts ]; then
+    MOUNTED=`/bin/busybox cat /proc/mounts 2>/dev/null`
+  fi
+  if [ "$MOUNTED" = "" ];then 
+    MOUNTED=`/bin/busybox mount 2>/dev/null`
+  fi
+  
+  if [ "$MOUNTED" != "" ]; then
+     /bin/busybox umount rootfs   2>/dev/null
+     RC=$?  
+     /bin/busybox sync 2>/dev/null
+     /bin/busybox umount  sysfs   2>/dev/null
+     RC=$RC$?
+     /bin/busybox sync 2>/dev/null
+     /bin/busybox umount proc  2>/dev/null
+     RC=$RC$?
+     /bin/busybox sync 2>/dev/null
+     export ECHOTEXT="$ECHOTEXT
+$INITPREF unmount commands issued for rootfs, sysfs,  proc, with '$RC' continuing...."
+  fi
+
+  #  now prove the iffy cases
+  if `is_string_in_file  "rootfs"  "/proc/mounts"`; then 
+    # for the case rootfs in INITRAMFS is unaccessible or we forgot rw boot option 
+	  /bin/busybox umount -f  rootfs   2>/dev/null
+    RC=$?   
+	  if [ $RC -ne 0 ]; then
+  	  /bin/busybox umount -f  /      2>/dev/null   
+  	  RC=$RC$?
+      if [ $RC -gt 1 ]; then
+         export ECHOTEXT="$ECHOTEXT 
+$INITPREF unable to unmount root /  with '$RC'"
+      else
+         export ECHOTEXT="$ECHOTEXT 
+$INITPREF successfully unmounted rootfs /  with '$RC'"
+      fi
+	  else
+      export ECHOTEXT="$ECHOTEXT 
+$INITPREF  successfully unmounted rootfs /  with '$RC'"
+    fi
+  fi
+  #
+  if `is_string_in_file  "sysfs"  "/proc/mounts"`; then 
+    # for the case rootfs in INITRAMFS is unaccessible or we forgot rw boot option 
+    /bin/busybox umount -f  sysfs   2>/dev/null
+    RC=$?   
+    if [ $RC -ne 0 ]; then
+      /bin/busybox umount -f  /sys      2>/dev/null   
+      RC=$RC$?
+      if [ $RC -gt 1 ]; then
+         export ECHOTEXT="$ECHOTEXT 
+$INITPREF unable to unmount sysfs /sys  with '$RC'"
+      else
+         export ECHOTEXT="$ECHOTEXT 
+$INITPREF  successfully unmounted sysfs /sys  with '$RC'"
+      fi
+    else
+      export ECHOTEXT="$ECHOTEXT 
+$INITPREF  successfully  unmounted sysfs /sys  with '$RC'"
+    fi
+  fi
+  #
+  if `is_string_in_file  "proc"  "/proc/mounts"`; then 
+    # for the case rootfs in INITRAMFS is unaccessible or we forgot rw boot option 
+    /bin/busybox umount -f  proc    2>/dev/null
+    RC=$?   
+    if [ $RC -ne 0 ]; then
+      /bin/busybox umount -f  /proc    2>/dev/null   
+      RC=$RC$?
+      if [ $RC -gt 1 ]; then
+         export ECHOTEXT="$ECHOTEXT 
+$INITPREF unable to unmount proc /proc  with '$RC'"
+      else
+         export ECHOTEXT="$ECHOTEXT 
+$INITPREF successfully unmounted   proc /proc  with '$RC'"
+      fi
+	  else
+      export ECHOTEXT="$ECHOTEXT 
+$INITPREF successfully  unmounted  proc  /proc  with '$RC'"
+    fi
+  fi
+  #
+}
+#
+mount_debugfs()
+{
+ local RC DEBUGFS
+ # debugfs needs to be compiled in
+ if  `is_string_in_file  "debugfs"  "/proc/filesystems" `; then 
+	/bin/busybox mkdir -p /sys/kernel  2>/dev/null
+	/bin/busybox mkdir -p /sys/kernel/debug  2>/dev/null
+	/bin/busybox mount -t debugfs  debugfs /sys/kernel/debug  2>/dev/null
+	RC=$?
+  export ECHOTEXT="$ECHOTEXT 
+$INITPREF Mounted debugfs at /sys/kernel/debug with '$RC'...."
+ else
+  export ECHOTEXT="$ECHOTEXT 
+$INITPREF Unable to mount debugfs, kernel misconfigured !"
+ fi
+}
+#
+mount_zramswapfs()
+{
+  local RC
+  echo $SWAPMEM > /sys/block/zram0/disksize
+  /bin/busybox mkswap /dev/zram0 2>/dev/null
+  RC=$?
+  [ $RC -eq 0  ] && echofile "$INITPREF" "Made swap device at /dev/zram0 with size '$SWAPMEM'"
+  /bin/busybox sync  2>/dev/null
+  #
+  /bin/busybox swapon /dev/zram0 2>/dev/null
+  RC=$RC$?
+  [ $RC -le 1  ] && echofile "$INITPREF" "Turned on swapping for device /dev/zram0 "
+  /bin/busybox sync  2>/dev/null
+  #
+  return 0
+}
+#
+unmount_zramswapfs()
+{
+  if [ -e /dev/zram0 ]; then
+    echo 1 > /sys/block/zram0/reset
+  fi
+  return 0
+}
+#
+check_for_zramswap()
+{
+    if [ "$SWAPDEV" = "/dev/zram0" -o "$SWAP" = "zram" ]; then
+      if `is_not_string_in_file zram /proc/modules`; then
+         /bin/busybox modprobe zram  2>/dev/null
+         /bin/busybox mdev -s        2>/dev/null
+         /bin/busybox sync           2>/dev/null
+      fi 
+      if [ -e /dev/zram0 ]; then
+        echofile "$INITPREF" "Found device /dev/zram0 for swapping into compressed RAM"
+        if [ "$SWAPMEM" != ""  ]; then 
+          DEFAULT_SWAPMEM=$SWAPMEM
+        fi
+        local PERCENT PERCENTMB
+        # not more than ~10% of RAM but at least 10MB
+        PERCENT=10
+	PERCENTMB=$(( $PERCENT * 1024 * 1024 ))
+        if [ "$DEFAULT_SWAPMEM" != ""  ]; then
+          if [ $DEFAULT_SWAPMEM -gt $PERCENT ]; then
+            DEFAULT_SWAPMEM=$PERCENT
+          fi
+        else
+          DEFAULT_SWAPMEM=$PERCENT
+        fi
+        SWAPMEM=$(( $TOTALMEM / 100 ))
+        SWAPMEM=$(( $DEFAULT_SWAPMEM * $SWAPMEM ))
+        if [ $(( $SWAPMEM * 100 / $TOTALMEM )) -gt $PERCENT ]; then
+          SWAPMEM=$PERCENTMB 
+        fi        
+        if [ $SWAPMEM -lt $PERCENTMB ]; then
+          SWAPMEM=$PERCENTMB 
+        fi
+        mount_zramswapfs               
+      else
+        echofile "$INITPREF" "No swap device /dev/zram0 found!"
+        echofile "$INITPREF" "Swapping into compressed RAM impossible, continuing....."
+      fi
+    fi # swapdev
+}
+#
+unmount_debugfs()
+{
+ local RC DEBUGFS mountpoint
+ # debugfs needs to be compiled in
+ if  `is_string_in_file  "debugfs"  "/proc/mounts" `; then 
+  /bin/busybox umount /sys/kernel/debug  2>/dev/null
+  RC=$?
+  echoconsole  "$INITPREF" "Unmounted debugfs with 'RC' "
+  if [ $RC -ne 0 ]; then
+    if `is_string_in_file  "debugfs"  "/proc/mounts" `; then
+      echoconsole "$INITPREF" "Failed to umount debugfs with 'RC' !"
+      echoconsole "$INITPREF" "Retrying to unmount debugfs : "
+      echoconsole "$INITPREF" "Forced ......"
+      bin/busybox umount  debugfs  2>/dev/null
+      RC=$?
+    fi
+    mountpoint=""
+    if  `is_string_in_file  "/sys/kernel/debug"  "/proc/mounts" `; then  
+      echoconsole "$INITPREF" "Failed again. Retrying a 2nd time to unmount debugfs : "
+      echoconsole "$INITPREF" "Forced ......"
+      /bin/busybox umount -f  debugfs 2>/dev/null
+      RC=$?
+      /bin/busybox umount -f /sys/kernel/debug  2>/dev/null
+      RC="$RC$?"
+      if [ $(( $RC )) -gt 1 ]; then
+        echoconsole "$INITPREF" "Lazy, detach only ....."
+        /bin/busybox umount -l debugfs  2>/dev/null
+        RC=$?
+        if [ $RC -gt 0 ]; then
+          echoconsole "$INITPREF" "Last umount for debugfs ended with '$RC', giving up !"
+        fi
+      else
+       echoconsole "$INITPREF" "Successfully unmounted debugfs from mountpoint /sys/kernel/debug with '$RC'...."
+      fi
+    else
+      mountpoint=`/bin/busybox grep debugfs  /proc/mounts 2>/dev/null | /bin/busybox cut -f2 -d " " 2>/dev/null`
+      if [ "$mountpoint" != "" ] ; then
+        echoconsole "$INITPREF" "Mountpoint of debugfs is suspicious: " 
+        echoconsole "$INITPREF" "$mountpoint"
+        echoconsole "$INITPREF" "Use /sys/kernel/debug instead!"
+        echoconsole "$INITPREF" "Retrying a 2nd time to unmount debugfs : "
+        echoconsole "$INITPREF" "Forced ......"
+        /bin/busybox umount -f  debugfs 2>/dev/null
+        RC=$?
+        /bin/busybox umount -f /sys/kernel/debug  2>/dev/null
+        RC="$RC$?"
+        if [ $(( $RC )) -gt 1 ]; then
+          echoconsole "$INITPREF" "Lazy, detach only ....."
+          /bin/busybox umount -l debugfs  2>/dev/null
+          RC=$?
+          if [ $RC -gt 0 ]; then
+            echoconsole "$INITPREF" "Last umount for debugfs ended with '$RC', giving up !"
+          fi
+        else
+         echoconsole "$INITPREF" "Successfully unmounted debugfs from mountpoint /sys/kernel/debug with '$RC'...."
+        fi
+      fi
+    fi
+  else 
+    export ECHOTEXT="$ECHOTEXT 
+$INITPREF Successfully unmounted debugfs from mountpoint /sys/kernel/debug with '$RC'...."
+  fi
+ else
+  export ECHOTEXT="$ECHOTEXT 
+$INITPREF debugfs is not mounted, unmount not necessary. Continuing..."
+ fi
+}
+#
+# Unmount a nodev filesystem
+unmount_nodevfs()
+{
+ local RC NODEVFS mountpoint fs detectedmountp detectednodevfs
+ NODEVFS=""
+ mountpoint=""
+ if [ "$2" != "" ]; then 
+   mountpoint="$2"
+ fi
+ if [ "$1" != "" ]; then 
+   NODEVFS="$1"
+ else
+   return 255
+ fi
+ if [ "$NODEVFS" != "" ]; then
+   if [ "$ALLNODEVFS" = "" ]; then
+     ALLNODEVFS=`/bin/busybox grep nodev /proc/filesystems 2>/dev/null | /bin/busybox cut -c 7-  2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`
+     export ALLNODEVFS
+   fi
+   if `is_substring_of "$NODEVFS" "$ALLNODEVFS"`; then 
+    if  `is_string_in_file  "$NODEVFS"  "/proc/mounts" `; then  
+      echofile  "$INITPREF" "Unmounting nodev filesystem  '$NODEVFS' ...."
+    	/bin/busybox umount  "$NODEVFS" 2>/dev/null
+	    RC=$?
+    	echofile  "$INITPREF" "....forced ......"
+      /bin/busybox umount -f "$NODEVFS"  2>/dev/null
+	    RC="$RC$?"
+      if [ $(( $RC )) -gt 1 ]; then
+        echofile  "$INITPREF" "Failed with '$RC', Trying lazy, detach only ....."
+      	/bin/busybox umount -l "$NODEVS"  2>/dev/null
+   	    RC=$?
+        if [ $RC -gt 0 ]; then
+          echofile "$INITPREF" "Last umount for '$NODEVFS' ended with '$RC', giving up !"
+          return 5
+        else
+          echofile  "$INITPREF" "Successfully unmounted nodev-filesystem '$NODEVFS' with '$RC'...."
+          return 0        
+        fi
+      else
+        echofile  "$INITPREF" "Successfully unmounted nodev-filesystem '$NODEVFS' with '$RC'...."
+        return 0
+      fi
+    else
+      echofile "$INITPREF" "Filesystem '$NODEVFS' not mounted!"
+      return 1 
+    fi
+   else
+     echofile "$INITPREF" "Filesystem '$NODEVFS' not found among nodev-filesystems detected in this kernel!"
+     return 255
+   fi
+ fi
+ if [ "$mountpoint" != "" ]; then
+   detectednodevfs=`/bin/busybox grep $mountpoint  /proc/mounts 2>/dev/null | /bin/busybox cut -f2 -d " " 2>/dev/null`
+   if [ "$mountpoint" != "$detectednodevfs" ]; then
+     if [ "$detectednodevfs" != "" ]; then
+       echofile  "$INITPREF" "Mountpoint of nodev-filesystem  is suspicious: " 
+       echofile  "$INITPREF" "'$mountpoint'"
+       echofile  "$INITPREF" "Use '$detectedmountp' instead!"
+       echofile  "$INITPREF" "Trying to unmount nodev-filesystem at '$detectedmountp' : "
+       /bin/busybox umount "$detectedmountp" 2>/dev/null
+       RC=$?
+       echofile  "$INITPREF" "Forced ......"
+       [ $RC -ne 0 ] && /bin/busybox umount -f "$detectedmountp"  2>/dev/null
+       RC="$RC$?"
+       if [ $(( $RC )) -gt 1 ]; then
+         echofile  "$INITPREF" "Lazy, detach only ....."
+         /bin/busybox umount -l "$detectedmountp"  2>/dev/null
+         RC=$?
+         if [ $RC -gt 0 ]; then
+           echofile  "$INITPREF" "Last umount for '$detectedmountp' ended with '$RC', giving up !"
+           return 5
+         else
+           echofile  "$INITPREF" "Successfully unmounted nodev-filesystem from mountpoint '$mountpoint' with '$RC'...."
+           return 0
+         fi       
+       else
+         echofile  "$INITPREF" "Successfully unmounted nodev-filesystem from mountpoint '$detectedmountp' with '$RC'...."
+       fi
+     else
+       echofile  "$INITPREF" "Mountpoint '$mountpoint' not  existent "
+       return 255
+     fi
+   else
+     echofile  "$INITPREF" "Mountpoint '$mountpoint' existent, unmounting..... "
+     /bin/busybox umount "$mountpoint" 2>/dev/null
+     RC=$?
+     echofile  "$INITPREF" "Forced ......"
+     [ $RC -ne 0 ] && /bin/busybox umount -f "$mountpoint"  2>/dev/null
+     RC="$RC$?"
+     if [ $(( $RC )) -gt 1 ]; then
+       echofile  "$INITPREF" "Lazy, detach only ....."
+       /bin/busybox umount -l "$mountpoint"  2>/dev/null
+       RC=$?
+       if [ $RC -gt 0 ]; then
+         echofile  "$INITPREF" "Last umount for '$mountpoint' ended with '$RC', giving up !"
+         return 5
+       else
+         echofile "$INITPREF" "Successfully unmounted nodev-filesystem from mountpoint '$mountpoint' with '$RC'...."
+         return 0       
+       fi
+     else
+       echofile  "$INITPREF" "Successfully unmounted nodev-filesystem from mountpoint '$mountpoint' with '$RC'...."
+       return 0
+     fi
+   fi
+ fi
+ 
+}
+#
+unmount_all_nodev_filesystems()
+{
+  local fs
+  fs=""
+  for fs in tmpfs tmpfs tmpfs hugetlbfs devpts debugfs sysfs proc; do
+    unmount_nodevfs "$fs" 
+  done
+  if [ `/bin/busybox cat /proc/mounts 2>/dev/null | /bin/busybox wc -l 2>/dev/null` -gt 1 ]; then
+    unmount_nodevfs "tmpfs"  
+    unmount_nodevfs "tmpfs"  
+    unmount_nodevfs "tmpfs"  
+    unmount_nodevfs "debugfs"  "/sys/kernel/debug"
+    unmount_nodevfs "devpts"   "/dev/pts"
+    unmount_nodevfs "debugfs"  "/sys/kernel/debug"
+    unmount_nodevfs "sysfs"    "/sys"
+    unmount_nodevfs "proc"     "/proc"
+    #unmount_nodevfs "rootfs"  "/"
+  fi 
+  if [ `/bin/busybox cat /proc/mounts 2>/dev/null | /bin/busybox wc -l 2>/dev/null` -gt 1 ]; then 
+    /bin/busybox umount -a -f    2>/dev/null
+  fi  
+}
+
+#
+mount_devtmpfs()
+{
+  local RC
+	/bin/busybox mkdir -p /dev   2>/dev/null
+	/bin/busybox mount -t devtmpfs devtmpfs /dev 2>/dev/null
+	RC=$?
+  export ECHOTEXT="$ECHOTEXT 
+$INITPREF Mounted devtmpfs at /dev with '$RC'...."
+
+  #/bin/busybox mdev -s 2>/dev/null
+  /bin/busybox sync 2>/dev/null
+  
+}
+#
+mount_shmfs()
+{
+  local RC
+  # tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)
+  if  `is_string_in_file  "tmpfs"  "/proc/filesystems"`; then 
+    /bin/busybox mkdir -p /dev/shm   2>/dev/null
+    /bin/busybox mount -t tmpfs -o rw,nosuid,nodev tmpfs /dev/shm 2>/dev/null
+    RC=$?
+    export ECHOTEXT="$ECHOTEXT 
+$INITPREF Mounted devtmpfs at /dev with '$RC'...."
+  fi
+  
+}
+#
+mount_devpts()
+{
+  local RC
+ if  `is_string_in_file  "devpts"  "/proc/filesystems"`; then 
+   /bin/busybox mkdir -p /dev/pts   2>/dev/null
+   /bin/busybox mount -t devpts -o rw,relatime   devpts   /dev/pts   2>/dev/null
+   RC=$?
+   export ECHOTEXT="$ECHOTEXT 
+$INITPREF Mounted devpts at /dev/pts with '$RC'...."
+   /bin/busybox sync 2>/dev/null
+ fi
+  
+}
+#
+mount_hugetlbfs()
+{
+  #hugetlbfs on /dev/hugepages type hugetlbfs (rw,relatime)
+  local RC
+  if  `is_string_in_file  "hugetlbfs"  "/proc/filesystems"`; then 
+    /bin/busybox mkdir -p /dev/hugepages   2>/dev/null
+    /bin/busybox mount -t hugetlbfs -o rw,relatime   hugetlbfs /dev/hugepages  2>/dev/null
+    RC=$?
+    export ECHOTEXT="$ECHOTEXT 
+$INITPREF Mounted hugetlbfs at /dev/hugepages with '$RC'...."
+    /bin/busybox sync 2>/dev/null
+  fi
+}
+#
+mount_filesystems()
+{
+ #  clean rootfs mounting for chroot or switch_root 
+  /bin/busybox mount -t rootfs -o rw,remount /  2>/dev/null  
+ 
+  # 
+  mount_procfs_sysfs "$1"
+  /bin/busybox sync 2>/dev/null
+  #
+
+ #
+ # The debugfs feature is normally not needed in initial boot
+ # but some drivers with debugfs support compiled in need a mounted debugfs to load
+ # For this case mount debugfs later.... 
+ if [ "$DEBUG" != "" -a "$NODEBUGFS" = "" ]; then
+  if  `is_not_string_in_file  "debugfs"  "/proc/mounts"`; then 
+    mount_debugfs
+    /bin/busybox sync 2>/dev/null
+  fi
+ fi
+}
+#
+

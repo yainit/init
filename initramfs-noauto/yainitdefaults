@@ -1,0 +1,159 @@
+#
+# All variables specified here have the lowest priority.
+# They are overwritten by kernel parameter commandline /proc/cmdline
+#
+# The name of this initrd file the system is booted with
+# Kernelparameter init=   will override this setting for possibly booting
+# with kexec an other kernel with another initrd file
+# For naming convention take care on ISOLINUX's 8.3
+INITRD=yaunity
+# Kernel Version for the default kernel within your system.
+# This will be the lowest version to be allowed to run.
+DEFKERNVER=3.0.0
+#  switch off all automatic actions:
+# search for processor appropriate boot kernel,
+# search for boot device,
+# search for data containing device
+#
+DEFAULT_KERNELCMDLINE_PARAMETERS=" NOAUTO= NOCARDMEM=nocardmem NOPCMCIA=nopcmcia NOIDE=noide NOFW=nofw NOWLAN=  NOTOUCH=notouch DEBUGFS=  "
+NORAID=noraid
+NOCRYPT=nocrypt
+RESCUE=""
+RESUMDEV=""
+
+# Defaults: (can be overwritten by kernel commandline parameters)
+DEFAULT_ROOTDIR=/mnt
+ROOTSWITCH="chroot"
+[ "$ROOTSWITCH" != "" ] && export ROOTSWITCH
+SYSERRPROMPT=""
+SYSERRFATAL=""
+TOREMOVE=""
+#  File system separator "/" for UNIX/GNU/LINUX
+FSS="/"
+#
+__SYSTEMDIRECTORIES="dev dev${FSS}input dev${FSS}usb dev${FSS}net dev${FSS}shm dev${FSS}pts dev${FSS}fd dev${FSS}block dev${FSS}disk etc etc${FSS}sysconfig etc${FSS}init.d etc${FSS}rc.d  etc${FSS}udev memory union root sys proc bin sbin usr lib lib${FSS}modules tmp mnt var opt usr${FSS}bin usr${FSS}sbin usr${FSS}lib usr${FSS}libexec usr${FSS}share usr${FSS}local usr${FSS}local${FSS}bin usr${FSS}local${FSS}sbin usr${FSS}local${FSS}lib usr${FSS}local${FSS}libexec usr${FSS}local${FSS}share var${FSS}lock var${FSS}log var${FSS}run usr${FSS}share bbsymlinx"
+#
+__FHS30_DIRECTORIES="bin boot dev etc etc${FSS}opt etc${FSS}X11 etc${FSS}sgml etc${FSS}xml etc${FSS}local lib lib* media media${FSS}floppy media${FSS}cdrom media${FSS}cdrecorder media${FSS}zip mnt opt opt${FSS}bin opt${FSS}doc opt${FSS}include opt${FSS}info opt${FSS}lib opt${FSS}man run sbin srv tmp usr usr${FSS}bin usr${FSS}include usr${FSS}games usr${FSS}sbin usr${FSS}local usr${FSS}local${FSS}bin usr${FSS}local${FSS}etc usr${FSS}local${FSS}games usr${FSS}local${FSS}include  usr${FSS}local${FSS}lib usr${FSS}local${FSS}lib* usr${FSS}local${FSS}man usr${FSS}local${FSS}sbin usr${FSS}local${FSS}share usr${FSS}local${FSS}src usr${FSS}lib usr${FSS}lib* usr${FSS}libexec usr${FSS}local${FSS}share usr${FSS}sbin usr${FSS}share usr${FSS}share${FSS}color usr${FSS}share${FSS}dict usr${FSS}share${FSS}man usr${FSS}share${FSS}man${FSS}man1 usr${FSS}share${FSS}man${FSS}man2  usr${FSS}share${FSS}man${FSS}man3 usr${FSS}share${FSS}man${FSS}man4 usr${FSS}share${FSS}man${FSS}man5 usr${FSS}share${FSS}man${FSS}man6 usr${FSS}share${FSS}man${FSS}man7 usr${FSS}share${FSS}man${FSS}man8  usr${FSS}share${FSS}misc usr${FSS}share${FSS}ppd usr${FSS}share${FSS}sgml usr${FSS}share${FSS}xml usr${FSS}share${FSS}doc usr${FSS}share${FSS}games usr${FSS}share${FSS}info usr${FSS}share${FSS}locale usr${FSS}share${FSS}nls  usr${FSS}share${FSS}ppd usr${FSS}share${FSS}sgml usr${FSS}share${FSS}terminfo usr${FSS}share${FSS}tmac usr${FSS}share${FSS}zoneinfo usr${FSS}src var var${FSS}cache${FSS}man var${FSS}cache${FSS}fonts var${FSS}games var${FSS}cache var${FSS}lib var${FSS}local var${FSS}lock var${FSS}log var${FSS}opt var${FSS}run var${FSS}spool var${FSS}tmp var${FSS}backups var${FSS}cron var${FSS}msgs var${FSS}preserve var${FSS}account var${FSS}crash var${FSS}games var${FSS}mail var${FSS}yp"
+#
+SYSTEMDIRECTORIES="dev dev/input dev/usb dev/net dev/shm dev/pts dev/fd dev/block dev/disk etc etc/sysconfig etc/init.d etc/rc.d  etc/udev memory union root sys proc bin sbin usr lib lib/modules tmp mnt var opt usr/bin usr/sbin usr/lib usr/libexec usr/share usr/local usr/local/bin usr/local/sbin usr/local/lib usr/local/libexec usr/local/share var/lock var/log var/run usr/share bbsymlinx"
+#
+FHS30_DIRECTORIES="bin boot dev etc etc/opt etc/X11 etc/sgml etc/xml etc/local lib lib* media media/floppy media/cdrom media/cdrecorder media/zip mnt opt opt/bin opt/doc opt/include opt/info opt/lib opt/man run sbin srv tmp usr usr/bin usr/include usr/games usr/sbin usr/local usr/local/bin usr/local/etc usr/local/games usr/local/include  usr/local/lib usr/local/lib* usr/local/man usr/local/sbin usr/local/share usr/local/src usr/lib usr/lib* usr/libexec usr/local/share usr/sbin usr/share usr/share/color usr/share/dict usr/share/man usr/share/man/man1 usr/share/man/man2  usr/share/man/man3 usr/share/man/man4 usr/share/man/man5 usr/share/man/man6 usr/share/man/man7 usr/share/man/man8  usr/share/misc usr/share/ppd usr/share/sgml usr/share/xml usr/share/doc usr/share/games usr/share/info usr/share/locale usr/share/nls  usr/share/ppd usr/share/sgml usr/share/terminfo usr/share/tmac usr/share/zoneinfo usr/src var  var/cache/man var/cache/fonts var/games var/cache var/lib var/local var/lock var/log var/opt var/run var/spool var/tmp  var/backups var/cron var/msgs var/preserve var/account var/crash var/games var/mail var/yp "
+#
+FHS30_BIN_FILES="cat chgrp chmod chown cp date dd df dmesg echo false hostname kill ln login ls mkdir mknod more mount mv ps pwd rm rmdir sed sh stty su sync true umount uname"
+#
+FHS30_ETC_FILES="csh.login exports fstab ftpusers gateways gettydefs group host.conf hosts hosts.allow hosts.deny hosts.equiv hosts.lpd inetd.conf inittab issue ld.so.conf motd mtab mtools.conf networks passwd printcap profile protocols resolv.conf rpc securetty services shells syslog.conf"
+#
+FHS30_SBIN_FILES="fastboot fasthalt fdisk fsck fsck.* filesystem getty halt ifconfig init mkfs mkfs.* mkswap reboot route swapon swapoff update"
+#
+SPECIALVARS="data= bootmedium= medium= sgnfile= changes= cp2ram mountmode copy2ram toram scantimeout= rescue debug_is_enabled emsg runlevel initcall_debug initcmd label uuid partuuid fsauto rootdev bootdev swapdev fromdev resumedev datadev"
+# some kernel parameters from kernel commandline as needed
+KERNELCMDLINE=" init= rdinit= noinitrd initfree= keepinitrd load_ramdisk= ro rw root= rootwait rootflags= rootfstype= rootdelay= raid= md= noresume resume_offset= resume= hibernate= resumewait resumedelay= boot_delay= nowait cgroup_disable= nohz_full= nohz= no_timer_check apicpmtimer align_va_addr cpu0_hotplug acpi_sleep= hpet= nohpet hpet64 eagerfpu= apm= notsc tsc= ntp_tick_adj= clocksource= clock= test_suspend no387 nofpu nomodeset no-scroll fbcon= mdacon= video= vga= console= no_console_suspend ip= nfsaddrs= dhcpclass= ether= profile=  "
+#  shell variables except kernel parameters from kernel commandline
+SHELLVARIABLES=" boot= from= passwd= locale= lang= language= iocharset= keymap= autoexec= ipx= atalk= dec= tr= atm= wlan= loglevel= blklst= modlst= whtlst= distro= initrd= uniparm= prompt= chroot= switch_root=  switchroot= quiet verbose debug initdbg wait delay overlay inject sanitize i noauto nomon nousb nopci nopcie nopcmcia noham nobt noirda nonfc nop9 nocaif nofw nops2 nocan nosnd nonet noatm noatalk nodec noipx nodccp nosctp notipc nol2tp noqos noib noeth notr nowlan nobat noscsi noide nocd noint noext nolayer novirt nomod noprocfs nosysfs nodebugfs noswap nohotplug nonet nopcmcia nocd nohd nocardmem $SPECIALVARS "
+#
+SHELLVARALIASES=" nocd=nodvd nocd=nooptical noint=nointernal noauto=na nomon=nomonitor nomon=noscreen nomon=nodisplay i=interactive i=interact i=prompt nopcmcia=nocardbus nocardmem=nosmartdisk nocardmem=nosddrive nocardmem=nommc  nocardmem=nosdd noham=noradio nobt=nobtooth nobt=nobluetooth noirda=noinfrared nonfc=nonearfield nop9=noplan9 nop9=no9p nofw=nofirewire nosnd=nosound noib=noinfbnd noib=noinfiniband noeth=noether nowlan=nowireless nowlan=nowifi nobat=nobatman nobat=nomesh novirt=novm nomod=nomodules nolayer=nolayerfs  rootfs=rootfsfile wlan=wifi wlan=wireless nocardmem=noflash noext=noexternal noext=noextern ro=readonly ro=read_only rw=readwrite rw=read_write switchroot=switch_root "
+# minimal busybox applets to cover by configuration
+MINIMAL_YAINIT_BBAPPLETS="ash sync mdev usleep sleep tr cut depmod modprobe insmod rmmod tar ls rm cp mv rm cat zcat xzcat lzcat lzopcat gunzip gzip basename dd hexdump wc lspci lsusb lsmod lsattr blkid findfs volname basename readlink dirname df ln uname date grep egrep sort tail less expr seq sed find rmdir makedevs mkdir mknod mkfifo mkswap mktemp chmod dmesg bbconfig mount umount switch_root chroot awk ps swapon swapoff sysctl rdev adjtimex ar base64 bunzip2 bzcat bzip2 catv chattr adjtimex base64 bunzip2 bzcat bzip2 catv chattr chgrp chmod chown chrt chvt cksum clear cmp comm cpio date diff dnsdomainname dos2unix du dumpkmap echo eject env expand false fbset fdisk fgconsole fgrep find free freeramdisk fsck fsck.minix fsync getopt getty halt head hostid hostname hwclock id ifconfig ifdown ifenslave ifup init install ionice iostat ip ipaddr ipcalc ipcrm ipcs kbd_mode kill killall killall5 klogd last linux32 linux64 linuxrc loadfont loadkmap logger login logname logread losetup lpq lpr lsof lzma man md5sum mesg more mountpoint nameif netstat nice nmeter nohup nslookup od openvt patch pgrep pidof ping ping6 pkill pmap poweroff powertop printenv printf pscan pstree pwd pwdx rdate rdev readahead readprofile realpath reboot renice resize rfkill setarch setconsole setfont setkeycodes setlogcons setserial setsid sha1sum sha256sum sha3sum sha512sum showkey smemcap start-stop-daemon syslogd tail tee telnet test top touch traceroute traceroute6 true tty ttysize tunctl tune2fs udhcpc udhcpc6 umount uniq unix2dos unlzma unlzop unxz unzip uptime users uudecode uuencode vi vlock who whoami whois xargs xz yes zcip"
+# pipe-progress which
+# all files to search for use as target init command for chroot/switch_root
+INIT_SEARCH_FILES="bin/init sbin/init usr/bin/init usr/sbin/init lib/systemd/systemd bin/systemd sbin/systemd usr/bin/systemd usr/sbin/systemd usr/lib/systemd/systemd"
+# all files to search for use as target chroot command 
+CHROOT_SEARCH_FILES="bin/chroot sbin/chroot usr/bin/chroot usr/sbin/chroot"
+# all files to search for use as target switch_root command 
+SWITCHROOT_SEARCH_FILES="bin/switch_root sbin/switch_root usr/bin/switch_root usr/sbin/switch_root"
+#
+LSB5_CORE_CMDNAMES="[ du install mv strings ar echo install_initd newgrp strip at ed ipcrm nice stty awk egrep ipcs nl  su basename env join nohup sync batch expand kill od tail bc expr killall passwd tar cat false ln paste tee chfn fgrep locale patch test chgrp file localedef pathchk tic chmod find logger pax time chown fold logname pidof touch chsh fuser  lp pr tput cksum gencat lpr printf tr cmp getconf ls ps true col gettext lsb_release pwd tsort comm grep m4  remove_initd tty cp groupadd mailx renice umount cpio groupdel make rm uname crontab groupmod man rmdir unexpand  csplit groups md5sum sed uniq cut gunzip mkdir sendmail useradd date gzip mkfifo seq userdel dd head mknod sh usermod df hostname mktemp shutdown wc diff iconv more sleep xargs dirname id mount sort zcat dmesg infocmp msgfmt split"
+#
+LSB5_LIB_NAMES="libcrypt libdl libgcc_s libncurses libncursesw libnspr4 libnss3 libpam libpthread librt libssl3  libstdcxx libutil libz libc libm proginterp libGL libGLU libICE libQtCore libQtGui libQtNetwork libQtOpenGL libQtSql  libQtSvg libQtXml libSM libX11 libXext libXft libXi libXrender libXt libXtst libasound libatk-1.0 libcairo libcairo-gobject libcairo-script-interpreter libfontconfig libfreetype libgdk-x11-2.0  libgdk_pixbuf-2.0  libgdk_pixbuf_xlib-2.0 libgio-2.0 libglib-2.0 libgmodule-2.0 libgobject-2.0 libgthread-2.0 libgtk-x11-2.0  libjpeg  libpango-1.0 libpangocairo-1.0 libpangoft2-1.0 libpangoxft-1.0 libpng12 libtiff libxcb libcups libcupsimage libsane  libxml2 libxslt"
+#
+LSB5_LIB_NAME_ALIASES="libcrypt=libcrypt.so.1 libdl=libdl.so.2 libgcc_s=libgcc_s.so.1 libncurses=libncurses.so.5    libncursesw=libncursesw.so.5 libnspr4=libnspr4.so libnss3=libnss3.so libpam=libpam.so.0 libpthread=libpthread.so.0    librt=librt.so.1 libssl3=libssl3.so libstdcxx=libstdc++.so.6 libutil=libutil.so.1 libz=libz.so.1 libc libm proginterp    libGL=libGL.so.1 libGLU=libGLU.so.1 libICE=libICE.so.6 libQtCore=libQtCore.so.4 libQtGui=libQtGui.so.4  libQtNetwork=libQtNetwork.so.4 libQtOpenGL=libQtOpenGL.so.4 libQtSql=libQtSql.so.4 libQtSvg=libQtSvg.so.4  libQtXml=libQtXml.so.4 libSM=libSM.so.6 libX11=libX11.so.6 libXext=libXext.so.6 libXft=libXft.so.2 libXi=libXi.so.6 libXrender=libXrender.so.1 libXt=libXt.so.6 libXtst=libXtst.so.6 libasound=libasound.so.2 libatk-1.0=libatk-1.0.so.0  libcairo=libcairo.so.2 libcairo-gobject=libcairo-gobject.so.2 libcairo-script-interpreter=libcairo-script-interpreter.so.2 libfontconfig=libfontconfig.so.1    libfreetype=libfreetype.so.6 libgdk-x11-2.0=libgdk-x11-2.0.so.0 libgdk_pixbuf-2.0=libgdk_pixbuf-2.0.so.0  libgdk_pixbuf_xlib-2.0=libgdk_pixbuf_xlib-2.0.so.0 libgio-2.0=libgio-2.0.so.0 libglib-2.0=libglib-2.0.so.0    libgmodule-2.0=libgmodule-2.0.so.0 libgobject-2.0=libgobject-2.0.so.0 libgthread-2.0=libgthread-2.0.so.0 libgtk-x11-2.0=libgtk-x11-2.0.so.0 libjpeg=libjpeg.so.62 libpango-1.0=libpango-1.0.so.0 libpangocairo-1.0=libpangocairo-1.0.so.0 libpangoft2-1.0=libpangoft2-1.0.so.0 libpangoxft-1.0=libpangoxft-1.0.so.0 libpng12=libpng12.so.0 libtiff=libtiff.so.5 libxcb=libxcb.so.1 libcups=libcups.so.2 libcupsimage=libcupsimage.so.2    libsane=libsane.so.1 libxml2=libxml2.so.2 libxslt=libxslt.so.1"
+## Device /dev/xxx where the root filesystem you want to boot is located
+#ROOTDEV=""
+# Type of filesystem of ROOTDEV. Must be within /proc/filesystems.
+#ROOTFS=""
+# Device name of boot device,
+# The device /dev/xxx , where the kernel (and initrd)
+# you are actually booting from is located.
+#BOOTDEV=""
+# Type of medium you are booting from. One of : cd,hd,usb,net,pcmcia
+# cd:      will start to search the boot files on the optical internal drives
+# hd:      will start to search the boot files on internal disk drives
+# usb:     will start to search the boot files on external, plugged in
+#          usb and/or firewire devices which appear under /sys/scsi/*/usb_storage
+# pcmcia:  will start to search the boot files on external,
+#          pcmcia/yenta_socket/pc_card devices appeared under /sys/block
+# net:     will start to search the boot files on external network devices
+#          such as NAS or with NFS linked PCs
+# if empty the search starts with opticals , than internal disks,
+# than pcmcia devices, than usb devices, than net devices
+# the follwing  other parameters will restrict the search instead if specified:
+#   nonet nousb nohd nocd nopcmcia
+#BOOTMEDIUM=""
+#
+ALLFOUNDMODULES=""
+#
+BLACKLISTED_BBALIASES="xz tar ar cp mv bash"
+#
+DEFRUNLEVEL=4
+#
+KERNVER=""
+MAJORKERNVER=""
+MINORKERNVER=""
+YAINITKERNVER="3.12.12.bfs4444yainitu"
+YAINITDEFKERNVER="3.8.13.rt204yainit"
+# last extension of filenames containing a squash filesystem
+SQUASHFSEXT="sfs"
+# name of file containing  kernel modules in YaIniT initramdisk
+# default is: 'libmodules-*.tar.*'
+KMODFILE=""
+# file type of kernel modules file
+# to specify only if it is a squashfs,ext*fs,btrfs,f2fs,reiserfs,xfs filesystem
+# which is loadable as a loop device and mountable under the /lib/modules/ in intramfs tree
+# default is: 
+KMODFILETYPE=""
+#  # PCI CLASSES    lspci
+  # 00 unclassified 00non-vga 01vga
+  # 01 mass storage controller 00scsi 01ide 02floppy 03ipi 04raid 05ata 06sata 07SAS 08nvram 80mass-stor
+  # 02 network 00ether 01tr 02fddi 03atm 04isdn 05worldfip 06picmg 80netwok
+  # 03 display 00vga 01xga  02-3D 80display
+  # 04 multimedia 00video 01audio 02telephony 03audiodevice 80multimedia
+  # 05 memory 00RAM 01FLASH 80mem
+  # 06 bridges 00host 01isa 02eisa 03microchannel 04pci 05pcmcia 06nu 07cardbus 08racey 09semitransparent pci-pci 0a infiniband 80bridge
+  # 07 communication 00serial 01parallel 02multiport-serial 03modem 04gpib 05smardcard 80comm
+  # 08 generic peripheral 00PIC 01DMA 02RTC 04hotplug 05SD 06iommu 80peripheral
+  # 09 input device 00keybd 01digitizer 02mouse 03scanner 04gameport 80input
+  # 0a docking station
+  # 0b processor
+  # 0c serial 00firewire 01access 02ssa 03fibrechannel 05smbus 06infiniband 07ipmi-smic 08sercos 09canbus
+  # 0d wireless 00irda 01cir 10rfid 11bluetooth 12broadband 20-802.1a 21 802.1b 80 wireless
+  # 0e intelligent controller
+  # 0f satellite comm
+  # 10 encryption 00netcomp 10entertainment 80encrypt
+  # 11 signal comm
+  # ff unassigned
+  # devices 1022=amd-cpu 1002=ati/amd 10de=nvidia 8086=intel
+
+# module definitions in *_MODULES
+#
+USBDEVICES=0
+# microseconds wait for backgrounded processes or sleeps with busybox usleep
+SYSWAIT=250000
+## intended to support are OPENSUSE PASSPARTU PUPPYLINUX QUIRKYLINUX SLACKOPUPPY
+##                         SLACKWARE SLAX SALIX FEDORA MINT UBUNTU DEBIAN
+SUPPORTED_DISTROS=""
+#  this all to distro specific parameters
+SYSFN=runtime
+#  Dir for mandatory system files
+MAINDIR=base
+# dir for mandatory system modules
+MODDIR=modules
+# dir for optional system files
+OPTDIR=optional
+#  dir for read-write settings to selected system
+ROOTRWDIR=rootcopy
+
+#ALLEXTENTS="2mx 2mxtsc 2se1 2se2 2se3 3se3 3se42 avx"
+
+############################
+
+

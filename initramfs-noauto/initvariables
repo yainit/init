@@ -1,0 +1,144 @@
+#
+# All variables specified here are substancially significant
+# Omitting this file at INIT or deleting it from INITRD may lead to crash
+#
+# These variables are for setting once at unique INIT load time
+# to initialise them with NULL = "" and reserve system memory
+#
+# All further rereading will reset the variable contents
+# and may lead to unwanted and unpredicted results
+#
+NOAUTO=""
+#
+#
+#  File system separator "/" for UNIX/GNU/LINUX
+FSS=""
+#
+DEFRUNLEVEL=""
+#
+ECHOTEXT=""
+
+SYSERRPROMPT=""
+SYSERRFATAL=""
+TOREMOVE=""
+
+KERNVER=""
+
+TOPKERNVER=""
+MAJORKERNVER=""
+MINORKERNVER=""
+EXTRAKERNVER=""
+SUFFIXKERNVER=""
+
+KERNVERFILE=""
+
+ALLEXTENTS=""
+ALLSUBEXTENTS=""
+ALLCPUMODS=""
+ALLRTEXTENTS=""
+
+ALLARCHSPECS=""
+CPUINFO=""
+TOTALMEM=""
+CPUMODEL=""
+CPUFREQ=""
+L1CACHE=""
+L2CACHE=""
+L3CACHE=""
+NRCPUS=""
+MAXCMDSET=""
+ARCHTEXT=""
+EXTENDU=""
+#to set with archvarfile
+ARCH=""
+#
+UNARYVARS=""
+SHELLVARS=""
+#
+MAKEDEVS=""
+BASENM=""
+ROOTSWITCH=""
+DEBUGFS=""
+ALLNODEVFS=""
+CONFIGDIR=""
+DEFAULT_MODTMPDIR=""
+MODTMPDIR=""
+LOCAL_DRIVERS=""
+#
+BLACKLISTED_BBALIASES=""
+HARDENED_BBALIASES=""
+MINIMAL_YAINIT_BBALIASES=""
+SQUASHFILE=""
+MODULE_BLACKLIST=""
+BLACKLIST_MODULES=""
+MODULE_WHITELIST=""
+MODPROBE_FUNCTIONS_READ=""
+#
+BUSDRIVERS=""
+DEFAULT_BUSDRIVERS=""
+DEFAULT_SYSBUSDRIVERS=""
+INPUTDRIVERS=""
+DEFAULT_SYSINPUTDRIVERS=""
+DEFAULT_INPUTDRIVERS=""
+ATADRIVERS=""
+DEFAULT_SYSATADRIVERS=""
+DEFAULT_ATADRIVERS=""
+NETDRIVERS=""
+DEFAULT_SYSNETDRIVERS=""
+DEFAULT_NETDRIVERS=""
+USBDRIVERS=""
+DEFAULT_SYSUSBDRIVERS=""
+DEFAULT_USBDRIVERS=""
+FILEDRIVERS=""
+DEFAULT_FILEDRIVERS=""
+DEFAULT_SYSFILEDRIVERS=""
+VIDEODRIVERS=""
+DEFAULT_SYSVIDEODRIVERS=""
+DEFAULT_VIDEODRIVERS=""
+INTELVIDEODRIVERS=""
+ATIVIDEODRIVERS=""
+NVIDIAVIDEODRIVERS=""
+SOUNDDRIVERS=""
+DEFAULT_SYSSOUNDDRIVERS=""
+DEFAULT_SOUNDDRIVERS=""
+PROBEDDRIVERS=""
+LOADEDDRIVERS=""
+VERIFYCONDITION=""
+VERIFIEDMODULE=""
+MODULES2REMOVE=""
+MODULES2LOAD=""
+MODULES_ORDER=""
+ALLFOUNDMODULES=""
+#
+OLDINITPARAMETERS=""
+#
+# last extension of filenames containing a squash filesystem
+SQUASHFSEXT=""
+# name of file containing  kernel modules in YaIniT initramdisk
+# default is: 'libmodules-*.tar.*'
+KMODFILE=""
+# file type of kernel modules file
+# to specify only if it is a squashfs,extNfs,btrfs,reiserfs,xfs filesystem
+# which is loadable as a loop device and mountable under the /lib/modules/ in intramfs tree
+KMODFILETYPE=""
+#
+## intended to support are OPENSUSE PASSPARTU PUPPYLINUX QUIRKYLINUX SLACKOPUPPY
+##                         SLACKWARE SLAX SALIX FEDORA MINT UBUNTU DEBIAN
+SUPPORTED_DISTROS=""
+
+############################
+
+DISKID=""
+PUUID=""
+PARTUUID=""
+LABELCONTAINER=""
+BLOCKDISKS=""
+PARTDEVS=""
+label=""
+LABELDD=""
+SECTSIZE=""
+STARTSECT=""
+FS=""
+ROOTFS=""
+ROOTFSTYPE=""
+

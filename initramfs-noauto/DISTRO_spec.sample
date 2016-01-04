@@ -1,0 +1,22 @@
+#One or more words that identify this distribution:
+DISTRO_NAME='Fantasy58498390'
+#A three-digit numeric value, version number of this distribution:
+DISTRO_VERSION=505
+#A two-digit numeric value, minor-version number of this distribution:
+DISTRO_MINOR_VERSION=00
+#The distro whose binary packages were used to build this distribution:
+DISTRO_BINARY_COMPAT='slackware'
+#The version of the distro whose binary packages were used to build this distro:
+DISTRO_COMPAT_VERSION='14.1'
+#
+DISTRO_KERNEL_VERSION='3.12.13'
+DISTRO_IDSTRING='p50520130606120001'
+#
+DISTRO_FILE_PREFIX='pptu'
+DISTRO_ROOTFS_SFS='pptu-505.sfs'
+DISTRO_ZDRVSFS='zp505813.sfs'
+#
+DISTRO_BROWSER_VERSION='2.24'
+DISTRO_BROWSER_NAME='seamonkey'
+#
+#

@@ -1,0 +1,28 @@
+#
+#  INIT-FUNCTIONS for Universal INIT with busybox
+#  (C) Dieter Miosga , 2008-2013-08-08
+#
+#set -x
+
+
+EXTENDU=""
+ALLEXTENTS="armv7 armv9 armv10 armv11 armv15 snapdragon tegra msm exynos omap samsung"
+ALLSUBEXTENTS="basic jazelle mmx sse sse2 sse3 ssse3"
+ALLCPUMODS="fpu mmx sse sse2 pni ssse3 sse4 sse4a sse4.1 sse4.2 sse5"
+ALLRTEXTENTS="tar.bz2 tar.lzma tar.xz tar.gz"  # "tar.Z tar.z tgz tbz tlz txz tz"
+ALLARCHSPECS=""
+CPUINFO="" 
+TOTALMEM=""
+CPUMODEL=""
+CPUFREQ=""
+L1CACHE=""
+L2CACHE=""
+L3CACHE=""
+NRCPUS=""
+MAXCMDSET=""
+ARCHTEXT=""
+
+
+
+echo "[ arm-functions ]: all read in!"    
+#

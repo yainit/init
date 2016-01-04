@@ -1,0 +1,4414 @@
+#  # written for # # ---- ! ---- / bin / busybox ash
+# (C) Dieter Miosga , 2009 through 2015-10-09
+if [ "$QUIET" = "" ]; then
+ echo "$INITPREF branch-block-functions being read in....."
+fi
+# TODO: !!!!
+# (1)  Allow to merge hardcoded modules (burned on DVD-/CD-ROM) in directories
+#      uclax/base uclax/optional uclax/modules with uclax/fromcd.sgn intelligently with
+#      a random access medium (such as USB-Disks or USB-Memory-Sticks). The core system may
+#      be harcoded and the rootcopy, optional and modules can be from a read-write medium
+# (2)  Allow various combinations of different media
+#      (e.g. rootfs on harddisk, modules on usb-stick, core on network storage)
+#
+LOGFILE="/$MSGFILE"
+[ "$LOGFILE" = "" ] && LOGFILE="/var/log/livedbg"
+LOGOPT=" >> $LOGFILE  2>&1"
+TIMEOUT=0
+MAXCYCLES=10
+MAXEXTERNALS=20
+# cpu arch variables are set in init now
+INITIALRAM="60%"
+RELEASE=""
+EXTENT=""
+RESTARTMDEV=""
+ALLARCHS="fpu mmx sse sse2 pni ssse3 sse4.1 sse4.2 sse4a sse5"
+LIVEFULLPATH=""
+INITRDVARS=""
+INITRDVARFILE="yainitdefaults"
+INITIALVARS=""
+GLOBALVARS=""
+GVSCRIPT="gvsript.sh"
+BLKID=""
+BLKIDRESULT=""
+EXTERNALDEVICES=""
+BLOCKDEVICES=""
+PARTITIONLIST=""
+DEVICELIST=""
+BLKIDTIMEOUT="3"
+CHROOT=""
+CHROOTBB=""
+OSNAME="`/bin/busybox uname -s`"
+OSVER="`/bin/busybox uname -r`"
+FSTABLLFLAG="# Updated automatically by $OSNAME-$OSVER / liblinuxrc"
+k=0
+# We have to set these variables very carefully
+MEMORY=memory
+MOUNTDIR=mnt
+CHANGES=$MEMORY/changes
+XINO=$MEMORY/xino
+COPY2RAM=$MEMORY/copy2ram
+IMAGES=$MEMORY/images
+INITRAMDISK=$MOUNTDIR/live
+LOOPMOUNT=$MOUNTDIR/tmp
+UNION=union
+#USEINTERNAL="yes"
+LAYERFS="aufs"
+# set the distros default kernel version
+DEFKERNVER="3.0.0"
+# KERNVER is now set in init
+#KERNVER=$DEFKERNVER
+DEFBOOTKERNEL=""
+BOOTKERNEL=$DEFBOOTKERNEL
+UNFOLDED=0
+DEFEXTENSION="lzm"
+EXTENSION=$DEFEXTENSION
+
+TIMEOUT=0
+MAXCYCLES=10
+MAXEXTERNALS=20
+# cpu arch variables are set in init now
+INITIALRAM="60%"
+RELEASE=$OSVER
+EXTENT="$EXTENDU"
+RESTARTMDEV=""
+ALLARCHS="fpu mmx sse sse2 pni ssse3 sse4_1 sse4_2 sse4a avx avx2"
+LIVEFULLPATH=""
+INITRDVARS=""
+INITIALVARS=""
+GLOBALVARS=""
+GVSCRIPT="gvsript.sh"
+BLKID=""
+BLKIDRESULT=""
+EXTERNALDEVICES=""
+BLOCKDEVICES=""
+PARTITIONLIST=""
+DEVICELIST=""
+BLKIDTIMEOUT="3"
+CHROOT=""
+CHROOTBB=""
+DEBUG_IS_ENABLED="$INITDBG"
+#
+# this will be replaced by build script, so never change the following line!
+LIVEDIRNAME="uclax"
+#
+# These are all necessary busybox commands / applets to run all the scripts of your underlying system
+ALLNECESSARYCMDS="ash basename blkid bunzip2 bzcat bzip2 cat chattr chgrp chmod chown chroot chvt clear cp cpio cut dd depmod devmem dirname dmesg echo ed egrep eject env expand expr false fbset fdisk fgrep find findfs fsck getopt grep gunzip  gzip hostid hwclock id insmod kbd_mode length less ln loadkmap logger logname logread losetup ls lsattr lsmod lspci lsusb lzmacat makedevs mdev mesg mkdir mkfifo mknod modprobe mount mountpoint mv nohup pivot_root printf ps pwd readlink realpath reset resize rm  rmdir rmmod runlevel rx script sed seq setconsole setfont setkeycodes setlogcons sh showkey sleep sort split stat strings stty sum switch_root sync sysctl tac tail tar tee test time timeout top touch tr true tty ttysize umount uname uncompress unexpand uniq unlzma unzip uptime usleep uudecode uuencode vi volname wc who xargs yes zcat"
+#
+# =================================================================
+# debug and output functions
+# =================================================================
+#
+#
+enable_debug()
+{
+  set DEBUG_IS_ENABLED=debug
+}
+#
+# echogreen will echo $@ in green color
+# $1 = text
+#
+echogreen()
+{
+   #echo -ne "[0;32m""$@""[0;39m"
+   # no more green
+   echo -n "$@"
+}
+# show information about the debug shell
+show_debug_banner()
+{
+   echo
+   echo "====="
+   echo ": Debugging started. Here is the root shell for you."
+   echo ": Type your desired commands or hit Ctrl+D to continue booting."
+   echo
+}
+#
+# log
+# store given text in /var/log/livedbg
+log()
+{
+   echo "$@" >> $LOGFILE 2>&1
+}
+#
+debug_log()
+{
+   if [ "$DEBUG_IS_ENABLED" != "" ]; then
+      echo "- debug: $*" >&2
+      log "- debug: $*"
+   fi
+}
+# debug_shell
+# executed when debug boot parameter is present
+#
+debug_shell()
+{
+   if [ "$DEBUG_IS_ENABLED" != "" ]; then
+      show_debug_banner
+      /bin/busybox ash < /dev/console
+      echo
+   fi
+}
+#
+# header
+# $1 = text to show
+#
+header()
+{
+  if  [ "$QUIET" != "" ]; then
+   log "$INITPREF:header: " "$@"
+  else
+   echogreen "$INITPREF"
+   echo "[0;1m""$@""[0;0m"
+   log "$INITPREF:header: " "$@"
+  fi
+}
+#
+# echolog
+# $1 = text to show and to write to /var/log/messages
+#
+echolog()
+{
+   log "$INITPREF" "$@"
+   [ "$VERBOSE" != "" ] && echo "$INITPREF $@"
+}
+#
+fatal()
+{
+   echolog ""
+   header "Fatal error occured -"
+   header "$1"
+   echolog "Something went wrong and we can't continue. This should never happen."
+   echolog "Please reboot your computer with Ctrl+Alt+Delete ..."
+   echolog ""
+   /bin/busybox ash < /dev/console
+}
+#
+read_initrdvar_file()
+{
+   local VAR
+ # first delete all presettings ! CRITICAL!
+   if [ "$GLOBALVARS" != "" ]; then
+     for VAR in "$GLOBALVARS"; do
+      eval "$VAR=\"\""
+     done
+   fi
+
+ # rereading deletes all preset variables too ! CRITICAL!
+
+  if [ "$INITRDVARFILE" != "" ]; then
+   if [ -e  $INITRDVARFILE ]; then
+     . $INITRDVARFILE
+   fi
+  fi
+}
+#
+read_initrdvar_file_old()
+{
+   local VAR
+   if [ "$GLOBALVARS" != "" ]; then
+     /bin/busybox  rm $GVSCRIPT
+     echo "#" >> $GVSCRIPT
+     for VAR in "$GLOBALVARS"; do
+      echo "$VAR=\"\"" >> $GVSCRIPT
+     done
+     echo "#" >> $GVSCRIPT
+     .  $GVSCRIPT
+   fi
+
+  if [ "$INITRDVARFILE" != "" ]; then
+   if [ -e ./$INITRDVARFILE ]; then
+    .  $INITRDVARFILE
+   fi
+  fi
+}
+#
+actualize_systime_criticals()
+{
+   local NOW MIN SEC
+   NOW=`/bin/busybox date 2>/dev/null`
+   MIN="$(echo $NOW | /bin/busybox cut -f2 -d: 2>/dev/null)"
+   SEC="$(echo $NOW | /bin/busybox cut -f3 -d: 2>/dev/null | /bin/busybox cut -f1 -d " " 2>/dev/null)"
+   NOW=$(/bin/busybox expr $MIN '*' 60 '+' $SEC 2>/dev/null)
+   SYSTIMEPASSED=$(/bin/busybox expr $NOW '-' $SYSTIME '-' $BLKIDTIMEOUT  2>/dev/null )
+   SYSTIME=$NOW
+   #echo $SYSTIME $SYSTIMEPASSED
+}
+#
+set_blkid_cmd()
+{
+
+  local VAR BLKID1 BLKID2 BLKID3 BLKID4
+  VAR=""
+  if [ "$1" = "" -a "$BLKID" != "" ]; then return 1; fi
+
+  #if [ "$1" = "/$UNION" -a "$BLKID" != ""  -a  "`$BLKID  | /bin/busybox grep "TYPE"`" = "" ]; then return 1; fi
+  if [ "$1" = "/$UNION" -a "$BLKID" != "" ]; then
+     if [ "`$BLKID  | /bin/busybox grep "TYPE"`" = "" ]; then return 1; fi
+  fi
+  BLKID1=""
+  BLKID2=""
+
+  if [ -e $1/bin/blkid ]; then
+   VAR=`$1/bin/blkid | /bin/busybox grep "TYPE" `
+   #if [ "$(echo $VAR | /bin/busybox grep "TYPE")" = "" ]; then
+   if [ "$VAR" = "" ]; then
+     BLKID1="$1/bin/busybox blkid"
+   else #if [ "$(echo $VAR | grep "util-linux")" != "" ]; then
+     BLKID2="$1/bin/blkid"
+   fi
+  fi
+
+  if [ -e $1/sbin/blkid ]; then
+   VAR=`$1/sbin/blkid `
+   if [ "$(echo $VAR | /bin/busybox  grep "TYPE")" = "" ]; then
+     BLKID1="$1/bin/busybox blkid"
+   else #if [ "$(echo $VAR | grep "util-linux")" != "" ]; then
+     BLKID2="$1/sbin/blkid"
+   fi
+  fi
+
+  if [ "$BLKID2" != "" ]; then BLKID=$BLKID2; return 0; fi
+  BLKID3=""
+  BLKID4=""
+  if [ -e $1/usr/bin/blkid ]; then
+   VAR=`$1/usr/bin/blkid `
+   if [ "$(echo $VAR | /bin/busybox  grep "TYPE")" = "" ]; then
+     if [ -e $1/usr/bin/busybox ]; then
+     BLKID3="$1/usr/bin/busybox blkid"
+     else
+     BLKID3="$1/bin/busybox blkid"
+     fi
+   else #if [ "$(echo $VAR | grep "util-linux")" != "" ]; then
+     BLKID4="$1/usr/bin/blkid"
+   fi
+  fi
+
+  if [ -e $1/usr/sbin/blkid ]; then
+   VAR=`$1/usr/sbin/blkid `
+   if [ "$(echo $VAR | /bin/busybox grep "TYPE")" = "" ]; then
+     if [ -e $1/usr/sbin/busybox ]; then
+     BLKID3="$1/usr/sbin/busybox blkid"
+     fi
+   else #if [ "$(echo $VAR | grep "util-linux")" != "" ]; then
+     BLKID4="$1/usr/sbin/blkid"
+   fi
+  fi
+
+  if [ "$BLKID4" != "" ]; then BLKID=$BLKID4; return 0; fi
+  if [ "$BLKID1" != "" ]; then BLKID=$BLKID1; return 0; fi
+  if [ "$BLKID3" != "" ]; then BLKID=$BLKID3; return 0; fi
+  if [ "$BLKID" = "" ]; then
+    if [ -e /bin/blkid ]; then
+      BLKID="/bin/blkid "
+      return 0
+    elif [ -e /bin/busybox ]; then
+      BLKID="/bin/busybox blkid "
+      return 0
+    else
+      return 1
+    fi
+  fi
+  return 1
+
+}
+#
+check_busybox()
+{
+  debug_log "check_busybox" "$*"
+  local R  APPMISS
+  R=0
+  APPMISS=""
+  for VAR in $ALLCMD; do
+    if [ "$VAR" != "" ]; then
+     if ! busybox_check $VAR; then
+       R=$?
+       #debug_log "missing $VAR !"
+       APPMISS=$(echo $APPMISS $VAR)
+     fi
+    else
+       R=1
+       break
+    fi
+  done
+  if [ "$APMISS" = "" ]; then
+    echolog "busybox successfully checked - no missing applets!"
+  else
+    echolog "busybox checked - missing applets: $APPMISS"
+  fi
+  return $R
+}
+#
+busybox_check()
+{
+  #debug_log "busybox_check" "$*"
+  local CHECK RETVAL
+  RETVAL=0
+  CHECK=`/bin/busybox`
+  if [ "$CHECK" != "" ]; then
+    CHECK=`/bin/busybox | /bin/busybox grep "$1"`
+  else
+    RETVAL=1
+  fi
+  if [ "$CHECK" != "" ]; then
+    if ! [ -e /bin/$1 ]; then
+      if ! [ -e /sbin/$1 ]; then
+       #debug_log "The $1 applet is needed but not compiled in your version of busybox or....."
+       #debug_log "....the command /bin/$1 or /sbin/$1 does not exist!"
+       RETVAL=1
+       #fatal   " reconfigure your initrd!"
+      else
+        RETVAL=0
+      fi
+    else
+      RETVAL=0
+    fi
+  fi
+  return $RETVAL
+}
+#
+parse_device_string()
+{
+ # parse strings which contain label or uuid data for root/boot
+ # block devices
+ debug_log "parse _device_string" "$*"
+
+	local R
+	R=`echo "$1" | /bin/busybox tr [:upper:] [:lower:] 2>/dev/null`
+	LABEL=""
+	UUID=""
+	case $R in
+		label=*)
+			LABEL=`echo "$1" | /bin/busybox cut -f2- -d= 2>/dev/null`
+		;;
+		uuid=*)
+			UUID=`echo "$1" | /bin/busybox cut -f2- -d=  2>/dev/null`
+		;;
+		/dev/disk/by-label/*)
+			LABEL=`echo "$1" | /bin/busybox cut -f5 -d/ 2>/dev/null`
+		;;
+		/dev/disk/by-uuid/*)
+			UUID=`echo "$1" | /bin/busybox cut -f5 -d/  2>/dev/null`
+		;;
+	esac
+ return 0
+
+}
+# this version works with the busybox > 1.14 applet blkid and volname
+check_device()
+{
+
+ debug_log "check_device" "$*"
+ set -x
+ if [ "$1" = "" ]; then
+   echo ""
+   return 255   # device or label/uuid?
+ fi
+ if [ "$1" = "*" ]; then echo ""; return 254; fi
+ local RETVAL VOLNAME DEV
+   RETVAL="$(/bin/busybox ls -1 "$1" 2>/dev/null)"
+   if [ "$RETVAL" = "$1" ]; then
+    #  $1 is a valid and existing device string
+    # point directly to the /dev/xxx directory and ignore existing /dev/disk/by-* links
+    RETVAL=`/bin/busybox readlink -f  $RETVAL 2>/dev/null`
+    if [ "$RETVAL" = "" ]; then RETVAL=$1; fi
+    RETVAL="/dev/$(/bin/busybox basename $RETVAL)"
+    echo $RETVAL
+    return 0
+   fi
+   BLKIDRESULT=`/bin/busybox blkid`
+   /bin/busybox sync
+   if [ "$BLKIDRESULT" = "" ]; then echo ""; return 1; fi
+   # look for a /dev/xxx, label or uuid in $1
+   #do a more explicit examination of device's label and uuid"
+   # the label or uuid has to be assigned before
+   parse_device_string "$1"
+   if [ "$LABEL" != "" ]; then
+       BLKIDRESULT=`/bin/busybox blkid`
+       /bin/busybox sync
+      if [ "$BLKIDRESULT" = "" ]; then echo ""; return 1; fi
+       LABEL="\"$LABEL\""
+       HLABEL="`echo "$BLKIDRESULT" | /bin/busybox grep  "$LABEL"`"
+       RETVAL=`echo $HLABEL | /bin/busybox cut -f1 -d: 2>/dev/null`
+       # search for CDROM/DVDROM media label or better volume id/volname
+       if [ "$RETVAL" = "" ]; then
+         if [ "$BLOCKDEVICES" = "" ]; then
+          BLOCKDEVICES="$(echo `list_block_devices` | /bin/busybox tr "\n" " " 2>/dev/null)"
+         fi
+         for VAR in $BLOCKDEVICES; do
+            if [ "$VAR" = "" ]; then break; fi
+            VOLNAME=`/bin/busybox volname $VAR 2>/dev/null`
+            if [ "$VOLNAME" = "$LABEL" ]; then HLABEL=$VAR; break; fi
+         done
+         RETVAL=$HLABEL
+       fi
+       if [ "$HLABEL" = "" ]; then
+        HLABEL="unappeared"
+       fi
+   elif [ "$UUID" != "" ]; then
+       BLKIDRESULT=`/bin/busybox blkid`
+       /bin/busybox sync
+       if [ "$BLKIDRESULT" = "" ]; then echo ""; return 1; fi
+       UUID="\"$UUID\""
+       HLABEL="`echo "$BLKIDRESULT"  | /bin/busybox grep  "$UUID"`"
+       RETVAL=`echo $HLABEL | /bin/busybox cut -f1 -d:  2>/dev/null`
+       if [ "$HLABEL" = "" ]; then
+         HLABEL="unappeared"
+       fi
+   else
+     RETVAL=""
+   fi
+   if [ "$RETVAL" != "" ]; then 
+     if [ "$HLABEL" = "unappeared" ]; then
+       HLABEL=`echo "$BLKIDRESULT"  | /bin/busybox grep  "$1"`
+       if [ "$HLABEL" != "" ]; then
+         # cut out the device string from blkid answer
+         if [ "$(echo $HLABEL   | /bin/busybox grep -o "$1")" = "$1" ]; then
+           RETVAL=`echo $HLABEL | /bin/busybox cut -f1 -d: 2>/dev/null`
+           # and echo for return
+           echo $RETVAL
+           return 0
+         fi
+       fi
+       echo ""
+       return 255
+     else
+        echo  $RETVAL
+        return 0
+     fi
+   else
+     echo $RETVAL
+   fi
+   set +x
+}
+# this version works only with cetrain blkid volname and readlink *X*name commands
+check_device_blkid()
+{
+
+	 debug_log "check_device" "$*"
+	
+	 if [ "$1" = "" ]; then
+	   echo ""
+	   return 2   # device or label/uuid?
+	 fi
+	 set_blkid_cmd "$2"
+	 local RETVAL VOLNAME DEV
+   RETVAL="$(/bin/busybox ls -1 "$1" 2>/dev/null)"
+   if [ "$RETVAL" = "$1" ]; then
+    #  $1 is a valid and existing device string
+    RETVAL=`/bin/busybox readlink $RETVAL 2>/dev/null`
+    if [ "$RETVAL" = "" ]; then RETVAL=$1; fi
+    RETVAL="/dev/$(/bin/busybox basename $RETVAL)"
+    echo $RETVAL
+    return 0
+   fi
+   # look for a /dev/xxx, label or uuid in $1
+   HLABEL="`$BLKID  | /bin/busybox grep "$1"`"
+   if [ "$HLABEL" != "" ]; then
+     # cut out the device string from blkid answer
+     RETVAL=`echo $HLABEL | /bin/busybox cut -f1 -d: 2>/dev/null`
+     # and echo for return
+     echo $RETVAL
+     return 0
+   fi
+   #do a more explicit examination of device's label and uuid"
+   # the label or uuid has to be assigned before
+   parse_device_string "$1"
+   if [ "$LABEL" != "" ]; then
+       HLABEL="`$BLKID  | /bin/busybox grep "\"$LABEL\""`"
+       RETVAL=`echo $HLABEL | /bin/busybox cut -f1 -d: 2>/dev/null`
+       # search for CDROM/DVDROM media label or better volume id/volname
+       if [ "$RETVAL" = "" ]; then
+         if [ "$BLOCKDEVICES" = "" ]; then
+          BLOCKDEVICES="$(list_block_devices)"
+         fi
+         for VAR in $BLOCKDEVICES; do
+            if [ "$VAR" = "" ]; then break; fi
+            VOLNAME="`volname $VAR 2>/dev/null`"
+            if [ "$VOLNAME" = "$LABEL" ]; then HLABEL=$VAR; break; fi
+         done
+         RETVAL=$HLABEL
+       fi
+       if [ "$HLABEL" = "" ]; then
+        HLABEL="unappeared"
+       fi
+   fi
+   if [ "$UUID" != "" ]; then
+       HLABEL="`$BLKID  | /bin/busybox grep "\"$UUID\""`"
+       RETVAL=`echo $HLABEL | /bin/busybox cut -f1 -d:  2>/dev/null`
+       if [ "$HLABEL" = "" ]; then
+         HLABEL="unappeared"
+       fi
+   fi
+   echo  $RETVAL
+   if [ "$HLABEL" = "unappeared" ]; then
+      return 1
+   else
+      return 0
+   fi
+
+}
+#
+verify_device()
+{
+ local R i
+ if [ "$1" = "" ]; then  echo ""; return 255; fi
+ if [ "$1" = "*" ]; then echo ""; return 255; fi
+ R=$1
+ R=$(check_device "$R")
+ if [ "$R" = "" ]; then  R=$1; fi
+ if [ "$(echo "$R" | /bin/busybox cut -c 1-4)" != "/dev" ]; then
+   #echolog "Device $R cannot be verified as a system device. Does not start with path /dev ! "
+   echo ""
+   return 1
+ fi
+ if [ -e $R ]; then echo $R; return 0; fi
+ if [ "$(/bin/busybox ls -1 "$R" 2>/dev/null)" != "$R" ]; then
+   if [ 0$WAITFORROOT -gt $MAXCYCLES ]; then
+    WAITFORROOT=$MAXCYCLES
+   fi
+ #  make more efforts for yet not existent removable devices
+   if [ "$NOUSB" = "" -o "$REMOVABLE" != "" ]; then
+    wait_for_external  "$WAITFORROOT"
+   fi
+   R=$(check_device "$R")
+   if [ "$(/bin/busybox ls -1 "$R" 2>/dev/null)" != "$R" ]; then
+    #echolog "Device $R not appeared or not existing! Retrying..."
+    if [ "$NOUSB" = "" -o "$REMOVABLE" != "" ]; then
+     wait_for_external  "$WAITFORROOT"
+    fi
+    R=$(check_device "$R")
+    if [ ! -e  $R ]; then
+     #echolog "Device $R not present! Giving up..."
+     echo ""
+     return 2
+    fi
+   fi
+ fi
+
+ set_system_variables
+ echo $R
+ return 0
+}
+#
+blkid_device_names()
+{
+  local BLKDEVS DEV line
+  /bin/busybox blkid | while read line; do
+    DEV=$(echo $line  | /bin/busybox cut -f1 -d: 2>/dev/null)
+    echo $DEV
+  done
+}
+#
+boot_device_dialog()
+{
+   #set -x
+   local BLKDEVLST DEVLST BD DEV D CDROMDEVLST
+   echolog "No root device specified for bootstrap on this system!"
+
+
+   actualize_systime_criticals
+
+   set_system_variables
+
+   if [ "$NOUSB" = "" -o "$REMOVABLE" != "" ]; then
+    if [ 0$WAITFORROOT -gt $MAXCYCLES ]; then
+      WAITFORROOT=$MAXCYCLES
+    fi
+    echolog "scanning for external devices...."
+    wait_for_external  "$WAITFORROOT"
+    actualize_systime_criticals
+    set_system_variables
+   fi
+   /bin/busybox  mdev -s $EMSG
+   /bin/busybox  sync
+#   /bin/busybox  sleep 1
+
+   if [ "$BLOCKDEVICES" = "" ]; then
+     fatal "The booted system has no block devices to boot to!"
+   fi
+   BD=""
+   DEV=""
+   ROOTDEV="/dev/fantasia9843839"
+   echolog "Appearing following Block Devices:"
+   DEVLST=`blkid_device_names`
+   BLKDEVLST=`/bin/busybox blkid`
+   echolog "---------------- Devices to boot to  -----------------------"
+   echo "/dev/ram0  without Label, without UUID"
+   BD=""
+   for BD in $DEVLST; do
+     D="$(echo $BD | /bin/busybox  cut -f1 -d'|' 2>/dev/null)"
+     LABEL="$(echo "$BLKDEVLST" | /bin/busybox grep "$D" | /bin/busybox cut -f2 -d= | /bin/busybox cut -f1 -d' ' | /bin/busybox tr -d '"'   2>/dev/null )"
+     UUID="$(echo "$BLKDEVLST" | /bin/busybox grep "$D" | /bin/busybox cut -f3 -d= | /bin/busybox cut -f1 -d' ' | /bin/busybox tr -d '"'   2>/dev/null )"
+     echo "$BD with Label: $LABEL with UUID: $UUID"
+   done
+   echolog "------------------------------------------------------------"
+   while ! [ -e  $ROOTDEV ]; do
+      echolog "Please specify manually the partition containing your OS!"
+      echolog "Enter the name of the disk partition label (e.g. MYDISK1) or the full device path (e.g. /dev/sda1)"
+      read DEV
+      echolog "Verifying your input : $DEV"
+      if [ "$DEV" = "" ]; then
+        echolog "Break with <ctrl-c>  "
+        continue
+      fi
+      ROOTDEV="$(verify_device $DEV)"
+
+      if [ "$ROOTDEV" = "" ]; then ROOTDEV="$(verify_device LABEL=$DEV)"; fi
+      if [ "$ROOTDEV" = "" ]; then ROOTDEV="$(verify_device UUID=$DEV)"; fi
+      if [ "$ROOTDEV" = "" ]; then
+        ROOTDEV="/dev/fantasia9843839"
+        echolog "Break with <ctrl-c>  "
+      fi
+      if [ -e  $ROOTDEV ]; then
+        break
+      else
+        echolog "No device $DEV found!"
+      fi
+   done
+   echolog "Booting to root device $ROOTDEV ..........."
+   if [ "$ROOTDEV" = "/dev/ram0" ]; then
+      BASENM="ram"
+      inline_externalfile "initrd-functions"
+      check_for_ramboot_branch  "$0"
+   fi
+   return 0
+}
+#
+boot_device_check()
+{
+ debug_log "boot_device_check"
+
+ # Read the variables from initrd variable file within initramfs
+ # Then read and check the cmdline to overwrite all previous settings
+ #read_initrdvar_file
+ # 2010-02-09
+ #read_cmdline
+ # is now in linuxrc and linuxrc-live
+
+ # 2009-09-01 branch to the linuxrc scripts is in /init now
+ # branch immediately to linuxrc for boot on installed linux if root != /dev/ramN
+ 
+ if [ "$INITCMD" != "" ]; then INITRD=$INITCMD; fi
+ if [ "$DEBUG_IS_ENABLED" != "" ]; then
+   if ! check_busybox; then
+     fatal "The configuration of the used busybox is not sufficient! Reconfigure and rebuild!"
+   fi
+ fi
+
+ if [ "$NOUSB" = "" -o "$REMOVABLE" != "" ]; then
+	   echolog " Awaiting external devices to appear........"
+	   wait_for_external  "$WAITFORROOT"
+ fi
+ # just in case the devicenames are not present or specified by LABEL/UUID
+ ROOTDEV=$(verify_device  "$ROOTDEV")
+
+ if [ "$BOOTDEV" = "" ]; then
+  # bootdevice is rootdevice if not otherwise specified
+  BOOTDEV=$ROOTDEV
+ else
+  BOOTDEV=$(verify_device  "$BOOTDEV")
+ fi
+
+# force a makedev or /bin/busybox mdev -s  if /dev/ramN is not existent
+ if   [ "$(/bin/busybox ls -1 "$BOOTDEV" 2>/dev/null)" != "$BOOTDEV" ]; then
+    /bin/busybox mdev -s $EMSG
+    /bin/busybox sync
+    /bin/busybox sleep 2
+ elif [ "$(/bin/busybox ls -1 "$ROOTDEV" 2>/dev/null)" != "$ROOTDEV" ]; then
+    /bin/busybox mdev -s $EMSG
+    /bin/busybox sync
+    /bin/busybox sleep 2
+ fi
+
+ if   [ "$(/bin/busybox ls -1 "$ROOTDEV" 2>/dev/null)" = "" ]; then
+   ROOTDEV=$(verify_device  $ROOTDEV)
+   if [ "$ROOTDEV" = "" ]; then
+     ROOTDEV=$(verify_device  "LABEL=$ROOTDEV")
+     if [ "$ROOTDEV" = "" ]; then
+      fatal " No root device found or appeared. Check kernel parameters!"
+     fi
+   fi
+ fi
+
+ /bin/busybox sync
+ if [ "$(/bin/busybox ls -1 "$BOOTDEV" 2>/dev/null)" = "" ]; then
+   BOOTDEV=$(verify_device  "$BOOTDEV")
+   if [ "$BOOTDEV" = "" ]; then
+     BOOTDEV=$(verify_device  "LABEL=$BOOTDEV")
+     if [ "$BOOTDEV" = "" ]; then
+       echolog " No boot device found or appeared. In trouble verify boot parameter."
+     fi
+   fi
+ fi
+
+ actualize_systime_criticals
+
+ set_system_variables
+
+ if [ "$DATADEV" != "" ]; then
+   DATADEV=$(verify_device $DATADEV)
+   if [ "$(/bin/busybox ls -1 "$DATADEV" 2>/dev/null)" = "$DATADEV" ]; then
+    mount_device  $DATADEV /$MNTDIR/$(/bin/busybox basename $DATADEV)
+    DATA=/$MNTDIR/$(/bin/busybox basename $DATADEV)/$LIVEDIRNAME
+   else
+      echolog " Error in assigning the data device. Verify kernel parameters!"
+   fi
+ fi
+
+ # if the state of scsi devices is not changed since init invocation
+ # then invoke a special verification of boot parameters
+ # TODO: check for boot media containing the initrd and kernel where is booted from
+ echolog "....devices for boot and root filesystem checked, external devices brought up. "
+
+ if [ "$BOOTDEV" != "$ROOTDEV" -a  "$FROM" = "" ]; then
+   if [ -e "$BOOTDEV" ]; then
+     FROM=$BOOTDEV/$LIVEDIRNAME/$SGNFILE
+   fi
+ fi
+
+ if [ "$SWAPDEV" != "" ]; then SWAPDEV=$(verify_device $SWAPDEV); fi
+
+ echolog "....all device parameters verified. "
+
+ return 0
+}
+#
+create_directory_tree()
+{
+  for ARG in $DIRTREE; do
+   [ -d $1/$ARG ] || /bin/busybox mkdir -p $1/$ARG  2>/dev/null
+  done
+}
+#
+build_rootfs_tree()
+{
+  [ -d /dev ]  || /bin/busybox mkdir -m 0755 /dev
+  [ -d /root ] || /bin/busybox mkdir -m 0744 /root
+  [ -e /dev/console ] || /bin/busybox mknod -m 0744 /dev/console c 5 1
+  [ -e /dev/initctl ] || /bin/busybox mknod -m 0744 /dev/initctl c 5 1
+  [ -e /dev/null ]    || /bin/busybox mknod /dev/null c 1 3
+  > /dev/.initramfs-tools
+  /bin/busybox mkdir /dev/.initramfs
+  create_directory_tree ""
+}
+#
+verify_symlinks()
+{
+  local  BBAPPS
+  BBAPPS="`echo $(/bin/busybox) | /bin/busybox cut -f6 -d: | /bin/busybox tr -d , `"
+  for ARG in $BBAPPS; do
+   if  [ "$(/bin/busybox ls -1 /bin/$ARG 2>/dev/null)" = "" ]; then
+      /bin/busybox ln -s /bin/busybox /bin/$ARG  2>/dev/null
+   fi
+  done
+}
+#
+check_essential_commands()
+{
+  debug_log "check_essential_commands"
+
+  for ARG in $ALLCMD; do
+    busybox_check $ARG
+  done
+}
+#
+check_kernel_config()
+{
+# TODO: is .config by kernel static or modular ?!
+   local DOTCONFIG FATALISM FATAL
+   if [ -e /proc/config.gz ]; then
+     /bin/busybox zcat /proc/config.gz > /DOT.config-$KERNVER 2>/dev/null
+     #/bin/busybox gunzip /DOT.config-$KERNVER.gz  2>/dev/null
+     #DOTCONFIG=`/bin/busybox cat /DOT.config-$KERNVER   2>/dev/null`
+   else
+     echolog " No Kernel configuration file /proc/config.gz accessible. "
+     echolog " Either procfs is not mounted or Kernel is misconfigured. Reconfigure system?! "
+     return 1
+   fi
+   FATALISM=""
+   FATAL=""
+   if [ "`/bin/busybox grep  "CONFIG_PROC_FS=y" </DOT.config-$KERNVER 2>/dev/null`" = "" ]; then FATAL=" missing procfs, "; fi
+   FATALISM="$FATALISM $FATAL"
+   if [ "`/bin/busybox grep  "CONFIG_SYSFS=y"  </DOT.config-$KERNVER 2>/dev/null`" = "" ]; then FATAL=" missing sysfs, "; fi
+   FATALISM="$FATALISM $FATAL"
+   #if [ "$(echo $DOTCONFIG | /bin/busybox grep  "CONFIG_MODULE_FORCE_LOAD=y")" != "" ]; then FATALISM=true; fi
+   #if [ "$(echo $DOTCONFIG | /bin/busybox grep  "CONFIG_MODULE_FORCE_UNLOAD=y")" != "" ]; then FATALISM=true; fi
+   if [ "$(echo "$FATALISM" | /bin/busybox tr -d ' ' 2>/dev/null )" != "" ]; then
+     echolog "$FATALISM"
+     fatal   "invalid kernel configuration. Boot will likely fail later on."
+   fi
+   return 0
+}
+#
+previous_matching_extent()
+{
+  # there must be two arguments
+  if [ "$1" = "" ]; then echo ""; return 254; fi
+  local  EXT PREVEXT
+  EXT="$1"
+  PREVEXT=""
+    # search matching EXTENT and assign the previous
+    case $EXT in
+      x86)
+#       I486="";I686="";K6P3="";K7P4="";K8P5="";K9C2="";K10I7=""
+       PREVEXT=""
+       ARCHTEXT=""
+      ;;
+      x86mmx)
+#       I686="";I486="fpu";K6P3="";K7P4="";K8P5="";K9C2="";K10I7=""
+       PREVEXT="x86"
+       ARCHTEXT=$I486TEXT
+      ;;
+      k5)
+#       I686="";I486="fpu";K6P3="";K7P4="";K8P5="";K9C2="";K10I7=""
+       PREVEXT="x86"
+       ARCHTEXT=$I486TEXT
+      ;;
+      k6p3)
+#       K6P3="";I486="";I686="mmx";K7P4="";K8P5="";K9C2="";K10I7=""
+       PREVEXT="x86mmx"
+       ARCHTEXT=$I686TEXT
+      ;;
+      k6)
+#       K6="";I486="";I686="";K5="mmx";K7P4="";K8P5="";K9C2="";K10I7=""
+       PREVEXT="k5"
+       ARCHTEXT=$K5TEXT
+      ;;
+
+      k7p4)
+#       K7P4="";I486="";I686="";K6P3="sse";K8P5="";K9C2="";K10I7=""
+       PREVEXT="k6p3"
+       ARCHTEXT=$K6P3TEXT
+      ;;
+      k7)
+#       K7="";I486="";I686="";K6="sse";K8P5="";K9C2="";K10I7=""
+       PREVEXT="k6"
+       ARCHTEXT=$K6TEXT
+      ;;
+      k8p5)
+#       K8P5="";I486="";I686="";K6P3="";K7P4="sse2";K9C2="";K10I7=""
+       PREVEXT="k7p4"
+       ARCHTEXT=$K7P4TEXT
+      ;;
+      k8)
+#       K8="";I486="";I686="";K6P3="";K7P4="sse2";K9C2="";K10I7=""
+       PREVEXT="k7"
+       ARCHTEXT=$K7TEXT
+      ;;
+      k9c2)
+#       K9C2="";I486="";I686="";K6P3="";K7P4="";K8P5="pni";K10I7=""
+       PREVEXT="k8p5"
+       ARCHTEXT=$K8P5TEXT
+      ;;
+      k9)
+#       K9="";I486="";I686="";K6P3="";K7P4="";K8="pni";K10I7=""
+       PREVEXT="k8"
+       ARCHTEXT=$K8TEXT
+      ;;
+      k10|k14|k12)
+#       K9="";I486="";I686="";K6P3="";K7P4="";K8="pni";K10I7=""
+       PREVEXT="k9"
+       ARCHTEXT=$K9TEXT
+      ;;
+      atom|corex)
+#       K8P5="";I486="";I686="";K6P3="";K7P4="";K9C2="pni";K10I7=""
+       PREVEXT="k9c2"
+       ARCHTEXT=$K9C2TEXT
+      ;;
+      coreavx)
+#       K8P5="";I486="";I686="";K6P3="";K7P4="";K9C2="pni";K10I7=""
+       PREVEXT="corex"
+       ARCHTEXT=$COREXTEXT
+      ;;
+      k15|k16)
+#       K8P5="";I486="";I686="";K6P3="";K7P4="";K9C2="pni";K10I7=""
+       PREVEXT="k10"
+       ARCHTEXT=$K10TEXT
+      ;;
+    esac
+    echo "$PREVEXT"
+    if [ "$PREVEXT" = "" ]; then
+      return 1
+    fi
+    return 0
+}
+#
+previous_matching_cmdset()
+{
+  # there must be an argument
+  if [ "$1" = "" ]; then echo ""; return 254; fi
+  local  EXT
+  EXT="$1"
+    # search matching EXTENT and assign the previous
+    case $EXT in
+
+      fpu)
+       I486="";I686="";K6P3="";K7P4="";K8P5="";ATOM="";K9C2="";COREX="";K10=""
+#       PREVEXT=""
+      ;;
+      mmx)
+       I686="";I486="fpu";K6P3="";K7P4="";K8P5="";ATOM="";K9C2="";COREX="";K10=""
+#       PREVEXT="x86"
+      ;;
+      sse)
+       K6P3="";I486="";I686="mmx";K7P4="";K8P5="";ATOM="";K9C2="";COREX="";K10=""
+#       PREVEXT="x86mmx"
+      ;;
+      sse2)
+       K7P4="";I486="";I686="";K6P3="sse";K8P5="";ATOM="";K9C2="";COREX="";K10=""
+#       PREVEXT="k6p3"
+      ;;
+      pni|sse3)
+       K8P5="";I486="";I686="";K6P3="";K7P4="sse2";ATOM="";K9C2="";COREX="";K10=""
+#       PREVEXT="k7p4"
+      ;;
+      sse4)
+       K9C2="";I486="";I686="";K6P3="";K7P4="";K8P5="pni";ATOM="";COREX="";K10=""
+#       PREVEXT="k8p5"
+      ;;
+      ssse3)
+       ATOM="";I486="";I686="";K6P3="";K7P4="";K8P5="";K9C2="pni";COREX="";K10=""
+#       PREVEXT="k9c2"
+      ;;
+      sse4.2)
+       COREX="";I486="";I686="";K6P3="";K7P4="";K8P5="";ATOM="";K9C2="ssse3";K10=""
+#       PREVEXT="k9c2"
+      ;;
+      sse4a)
+       K10="";I486="";I686="";K6P3="";K7P4="";K8P5="";ATOM="";K9C2="pni";COREX=""
+#       PREVEXT="k9c2"
+      ;;
+      avx)
+       K10="";I486="";I686="";K6P3="";K7P4="";K8P5="";ATOM="";K9C2="ssse3";COREX=""
+#       PREVEXT="k9c2"
+      ;;
+      bmi|bmi2|avx2)
+       K10="";I486="";I686="";K6P3="";K7P4="";K8P5="";ATOM="";K9C2="avx";COREX=""
+#       PREVEXT="k9c2"
+      ;;
+
+    esac
+    echo "$I486$I686$K6P3$K7P4$K8P5$ATOM$K9C2$COREX$K10"
+    if [ "$I486$I686$K6P3$K7P4$K8P5$ATOM$K9C2$COREX$K10" = "" ]; then
+      return 1
+    fi
+    return 0
+}
+#
+list_architecture_description()
+{
+  if [ "$DEBUG_IS_ENABLED" != "" ]; then
+   echolog "The following x86 architecture families are previewed:"
+   echolog  "$I486TEXT"
+   echolog  "$I586TSCTEXT"
+   echolog  "$I686TEXT"
+   echolog  "$K6P3TEXT"
+   echolog  "$K7P4TEXT"
+   echolog  "$K8P5TEXT"
+   echolog  "$K9C2TEXT"
+   echolog  "$COREXTEXT"
+   echolog  "$COREAVXTEXT"
+   echolog  "$COREAVX2TEXT"
+   echolog  "$K5TEXT"
+   echolog  "$K6TEXT"
+   echolog  "$K7TEXT"
+   echolog  "$K8TEXT"
+   echolog  "$K9TEXT"
+   echolog  "$K10TEXT"
+   echolog  "$K15TEXT"
+   echolog  "$K14TEXT"
+   echolog  "$K16TEXT"
+   echolog  "$K18TEXT"
+  fi
+#  arrays do not work in ash!!!
+#  for VAR in $ALLEXTENTS; do
+#     echolog "${ARCHDESC[$i]}"
+#     i=$(/bin/busybox expr $i '+' 1)
+#  done
+}
+#
+assign_cpuappropriate_systemfiles()
+{
+  debug_log "assign_cpuappropriate_systemfiles" "$*"
+  if [ "$1" = "" ]; then return 254; fi
+  if [ "$2" = "" ]; then return 254; fi
+  echolog "scanning for $MAXCMDSET instruction set appropriate system files...."
+  if [ "$DEBUG_IS_ENABLED" = "" ]; then
+     list_architecture_description
+  fi
+  local SYSFILES EXT PREVEXT FILEEXTENT DIR
+  FILEEXTENT=""
+  PREVEXT="$2"
+  DIR="$1"
+  if [ "$3" != "" ]; then
+    FILEEXTENT=".$3"
+  fi
+  # verify that the directory name has a slash / at the end if it is not root
+  DIR="$(/bin/busybox dirname $DIR)/$(/bin/busybox basename $DIR)/"
+  if [ "$1" = "/" ]; then DIR="/"; fi
+  #echo "dir $DIR"
+  #SYSFILES=""
+  SYSFILES="$DIR$SYSFN-$PREVEXT$FILEEXTENT"
+  EXT=""
+  # look in the system root for runtime files
+  if [ -e $DIR$SYSFN-$PREVEXT$FILEEXTENT ]; then
+     SYSFILES="$DIR$SYSFN-$PREVEXT$FILEEXTENT"
+     EXT=$PREVEXT
+  else
+    while [ "$(/bin/busybox ls -1 $SYSFILES  2>/dev/null)" = "" ]; do
+      EXT="$(previous_matching_extent  "$PREVEXT")"
+      SYSFILES="$DIR$SYSFN-$EXT$FILEEXTENT"
+      if [ "$EXT" = "" ]; then  break; fi
+      PREVEXT=$EXT
+      #echo "prevext $PREVEXT"
+    done
+  fi
+  #echo "sysfile $SYSFILES ext  $EXT prevext $PREVEXT"
+  if [ "$EXT" = "" ]; then
+    echolog "No appropriate systemfiles for subarchitecture $EXTENT"
+    echolog "for $MAXCMDSET found in initramdisk."
+    return 1
+  fi
+  echolog "found and extracting $SYSFILES...."
+  # for lzma compressed files check file extent and unlzma first!
+  if [ "$FILEEXTENT" = ".tar.lzma" ]; then
+    /bin/busybox unlzma $SYSFILES
+    SYSFILES="$(echo $SYSFILES | /bin/busybox cut -f1 -d'.' ).$(echo $SYSFILES | /bin/busybox cut -f2 -d'.' )"
+  fi
+  # this worx 4 all *.tar,  *.tar.gz , *.tar.bz2
+  /bin/busybox tar -xf $SYSFILES 2>/dev/null
+  if [ -d $DIR$SYSFN ]; then
+    # do not overwrite existing files or symlinks
+    /bin/busybox cp -RP  $DIR$SYSFN/*        $DIR        2>/dev/null
+    # only the bin/*  files  are replaced
+    # -> busybox gets a shared libraries replacement for shorter execution  times
+    /bin/busybox cp -fRP $DIR$SYSFN/bin      $DIR        2>/dev/null
+    # all new static commands preferrably for execution
+    # this is necessary for the blkid, fdisk, parted and mount programs
+    /bin/busybox mv -f   $DIR/bin/*.static   $DIR/bin/*  2>/dev/null
+    # do no more overwrite the busybox with shared libs
+    # if [ -e /lib/busybox ]; then mv -f /lib/busybox  $DIR/bin/busybox  2>/dev/null; fi
+    /bin/busybox --install -s  $DIR/bin          2>/dev/null
+    /bin/busybox rm -fR  $DIR$SYSFN/*            2>/dev/null
+    /bin/busybox rmdir   $DIR$SYSFN              2>/dev/null
+    /bin/busybox rm      $DIR$SYSFN-*            2>/dev/null
+    echolog "....done extraction of $SYSFN- with ending $EXT$FILEEXT at $DIR"
+    echolog "with subarchitecture $EXT
+                $ARCHTEXT"
+  else
+    header "....error in extraction of $SYSFILES ! This should never happen. Check $SYSFILES for 'tar -xf *'  function!"
+    echolog "however we continue booting......"
+  fi
+  /bin/busybox sync
+  return 0
+}
+#
+cpuid_optimize()
+{
+  debug_log "cpuid_optimize"
+  local   EXT TEXT
+  if [ "$NOAUTO" != "" ]; then
+    echolog " nothing to optimize - kernel parameter noauto specified!  "
+    return 1
+  fi
+  if [ "$MAXCMDSET" = "" -o  "$EXTENDU" = "" ]; then
+    set_cpuvars  "$INITPREF"
+  else
+      EXTENT=$EXTENDU
+      TEXT="$ARCHTEXT"
+      header "Found: $CPUMODEL"
+      header "with $L2CACHE KB L2-Cache at $CPUFREQ MHz "
+      header "$TEXT"
+      header "with $NRCPUS processor(s) brought up and $TOTALMEM kB of RAM "
+      echolog " "
+      if ! [ -e "/bin/busybox-$EXTENDU" ]; then
+        echolog  "no further optimization possible for $EXTENT with $MAXCMDSET"
+        return 0
+      fi
+  fi
+  #if  [ "$EXTENDU" = "" ]; then
+   # set_cpuvars  "$0"
+  #fi
+  if  [ "$CPUINFO" = "" ]; then
+    echolog " nothing to optimize - kernel shows no CPUINFO - reconfigure,rebuild?  "
+    return 2
+  fi
+
+  EXTENT=$EXTENDU
+  TEXT="$ARCHTEXT"
+
+  assign_cpuappropriate_systemfiles "/" "$EXTENT" "tar.lzma"
+
+  set_blkid_cmd ""
+
+  EXT=$EXTENT
+  while  [ "$(/bin/busybox ls -1 /bin/busybox-$EXT 2>/dev/null)" = "" ]; do
+    EXT="$(previous_matching_extent  "$EXT")"
+    if [ "$EXT" = "" ]; then break; fi
+  done
+  if [ "$EXT" != "$EXTENT" ]; then
+   echolog "repeating optimization..."
+   if [ "$ARCHTEXT" != "" ]; then
+     echolog "optimizing for $CPUMODEL
+              with $EXTENT $MAXCMDSET ........"
+   fi
+  fi
+  if [ "$EXT" = "" ]; then EXT=$EXTENT; fi
+  /bin/busybox sync
+  #  and install the right one version of busybox if existent
+  if [ -e "/bin/busybox-$EXT" ]; then
+    if [ "$MAXCMDSET" != "" ];  then
+      /bin/busybox cp -f /bin/busybox-$EXT /bin/busybox  $EMSG
+      echolog "....done: optimized busybox for $EXT"
+      echolog "deleting all other busyboxes and setting all necessary symlinks..... "
+      /bin/busybox rm /bin/busybox-*  $EMSG
+      verify_symlinks
+      header "Found: $CPUMODEL"
+      header "with $L2CACHE KB L2-Cache at $CPUFREQ MHz "
+      header "$TEXT"
+      header "with $NRCPUS processor(s) brought up and $TOTALMEM kB of RAM "
+      return 0
+    fi
+    /bin/busybox rm -f /bin/busybox-*
+  else
+     echolog  "no further optimization possible for $EXTENT with $MAXCMDSET"
+     /bin/busybox rm -f /bin/busybox-*
+  fi
+
+  echolog "continuing with default files"
+  echolog "verifying all necessary symlinks for busybox..... "
+  verify_symlinks
+  return 0
+}
+#
+allow_only_root()
+{
+  # test if the script is started by root user. If not, exit
+  #if [ "0$UID" -ne 0 ]; then # forbidden by checkbashisms
+  if [ "0$(/bin/busybox id 2>/dev/null)" -ne 0 ]; then
+     echo "Only root can run this '$0' script"; exit 1
+  fi
+}
+#
+# ===========================================================
+# text processing functions
+# ===========================================================
+#
+# look into cmdline and echo $1 back if $1 is set
+# $1 = value name, case sensitive, for example 'debug'
+# obsoleted : 2009-07-12, Dieter Miosga, kept because the Slackware Scripts do contain such function calls
+cmdline_parameter()
+{
+   debug_log "cmdline_parameter" "$*"
+   log "searching for bootparam: $1"
+   /bin/busybox egrep -o "(^|[[:space:]])$1([[:space:]]|\$)" /proc/cmdline | /bin/busybox tr -d " " | /bin/busybox tail -n 1
+}
+#
+# look into cmdline and echo value of $1 option back if $1 is assigned as value
+# parmetername=$1 , $1 value name, case sensitive, for example 'changes'
+# obsoleted : 2009-07-12, Dieter Miosga
+cmdline_value()
+{
+   debug_log "cmdline_value" "$*"
+   log "searching for bootparam value: $1"
+   /bin/busybox egrep -o "(^|[[:space:]])$1=[^[:space:]]+" /proc/cmdline | /bin/busybox cut -d "=" -f 2- | /bin/busybox tail -n 1
+}
+#
+# Make sure the part of a script after 'mutex_lock' call is atomic,
+# that means the 'locked' part of the script can never be execuetd
+# from several processes at the same time, in parallel.
+# Every script waits until it gathers the lock.
+# The lock directory is saved in /dev instead of /tmp, because /tmp may be
+# readonly at the time when the lock is needed (eg. when udev is starting)
+# $1 = name of the lock
+#
+mutex_lock()
+{
+   debug_log "mutex_lock" "$*"
+   while ! /bin/busybox mkdir "/dev/ll-mutex-lock-$1" 2>/dev/null; do
+      usleep 100000;
+   done
+}
+#
+# Unlock the lock so another waiting process can reusse it and continue
+# $1 = name of the lock
+#
+mutex_unlock()
+{
+   debug_log "mutex_unlock" "$*"
+   /bin/busybox rmdir "/dev/ll-mutex-lock-$1" 2>/dev/null
+}
+#
+# ===========================================================
+# system functions
+# ===========================================================
+# setup /usr from /usr.lzm inside initrd
+# setup necessary kernel drivers wih kernelversion extension
+# from $DATADEV/$LIVEDIRNAME/optional/drivers-$KENVER.$EXTENSION
+mount_initrd_loops()
+{
+   debug_log "mount_initrd_loops" "$*"
+   QUIET="quiet"
+   if [ "$KERNVER" = "$DEFKERNVER" ]; then
+   {
+     if [ -e /usr.lzm ]; then
+       mount_device /usr.lzm /usr loop,ro squashfs
+     fi
+     /bin/busybox rm  /drivers-*.sfs* #$EMSG
+     if [ -e /drivers.lzm ]; then
+        mount_device /drivers.lzm /lib/modules/$KERNVER/kernel/drivers loop,ro squashfs
+        echolog "mounted lzm-compressed squashfs file drivers.lzm with additional kernelmodules"
+     fi
+   }
+   else
+   {
+
+     if [ -e /drivers-$KERNVER.$EXTENSION ]; then
+      /bin/busybox mkdir -p  /lib/$KERNVER
+      /bin/busybox mv -f     /drivers-$KERNVER.$EXTENSION  /lib/$KERNVER
+      # delete unnecessary other kernelmodule files
+      /bin/busybox rm -f     /*.sfs*
+      /bin/busybox mkdir -p  /lib/modules
+      mount_device /lib/$KERNVER/drivers-$KERNVER.$EXTENSION /lib/$KERNVER  loop,ro squashfs
+      echolog "mounted squashfile drivers-$KERNVER.$EXTENSION with additional kernelmodules"
+      # do not overwrite existing modules for actual kernel
+      if [ -d /lib/modules/$KERNVER -a -e /lib/modules/$KERNVER/modules.dep ]; then
+        /bin/busybox cp -RP   /lib/$KERNVER/* /lib/modules/$KERNVER
+        /bin/busybox umount   /lib/$KERNVER/drivers-$KERNVER.$EXTENSION
+        /bin/busybox rmdir    /lib/$KERNVER
+      else
+        /bin/busybox cp -fRP  /lib/$KERNVER   /lib/modules
+        /bin/busybox umount   /lib/$KERNVER/drivers-$KERNVER.$EXTENSION
+        /bin/busybox rmdir    /lib/$KERNVER
+      fi
+      UNFOLDED=1
+     fi
+     /bin/busybox rm -f  *.$DEFEXTENSION
+   }
+   fi
+   reset_quietness
+   return 0
+}
+#
+copy_kernelmodules()
+{
+   debug_log "copy_kernelmodules" "$*"
+
+   if [ -e /lib/modules/$KERNVER/modules.dep ]; then
+   {
+     /bin/busybox mkdir -p  $1/lib/modhelp  2>/dev/null
+     /bin/busybox mv -f     $1/lib/modules/* $1/lib/modhelp  2>/dev/null
+   #  merge the kernel module directories
+     /bin/busybox cp -fdpR    /lib/modules/$KERNVER   $1/lib/modules  2>/dev/null
+     /bin/busybox cp -fdPR  $1/lib/modhelp/$KERNVER   $1/lib/modules  2>/dev/null
+   # cleanup
+     /bin/busybox rm -fR    $1/lib/modhelp/*  2>/dev/null
+     /bin/busybox rmdir     $1/lib/modhelp    2>/dev/null
+   }
+   else
+    purge_unused_kernelmodules "$1" "$0"
+   fi
+}
+#
+verify_kernelmodules()
+{
+   debug_log "verify_kernelmodules" "$*"
+   echolog "handling kernelmodules........."
+   # check wether there are kernelmodules from initrd
+   if [ $UNFOLDED -ne 0 ]; then
+    copy_kernelmodules $1
+    echolog "kernelmodules successfully copied to  `pwd`$1/lib/modules/$KERNVER...."
+    echolog "and modules from other kernel versions purged."
+   else
+    purge_unused_kernelmodules "$1" "$0"
+    echolog " kernelmodules from other kernel versions at  `pwd`$1/lib/modules/$KERNVER successfully purged."
+   fi
+}
+#
+# modprobe module $1, including all dependencies, suppress all messages
+# This was own function, because modprobe in busybox didn't support
+# neither gzipped modules nor dependencies. Seems to be fixed now, though.
+# $1 = module name, eg. ehci-hcd
+# $* = optional arguments
+#
+modprobe_kernelmodule()
+{
+   debug_log "modprobe_module" "$*"
+   local MODULE ERR FOUND
+   MODULE="$1"
+   if  [ "$MODULE" = "" ]; then
+     debug_log " Parameter not given ! "
+     return 255
+   fi
+   #shift
+   if ! [ -d /lib/modules/$KERNVER  ]; then
+     debug_log " Module directory /lib/modules/$KERNVER not found !"
+     return 254
+   fi
+   FOUND=`/bin/busybox lsmod  | /bin/busybox grep $MODULE `
+   if [ "$FOUND" != "" ]; then
+     debug_log " Module $MODULE already loaded !"
+     return 2
+   fi
+  /bin/busybox modprobe "$MODULE" 2>/dev/null ###$2 $3 $4 $5     #$EMSG
+  ERR=$?
+  if [ $ERR -ne 0 ]; then
+    debug_log "...loading kernelmodule $MODULE resulted in error $ERR"
+    FOUND=`/bin/busybox find /lib/modules/$KERNVER/kernel -name "$MODULE.*" 2>/dev/null`
+    if [ "$FOUND" = "" ]; then
+      debug_log "kernelmodule $MODULE not found in /lib/modules/$KERNVER/kernel !"
+      return 3
+    else
+      /bin/busybox modprobe -o "$MODULE" "$MODULE"  2>/dev/null ###$2 $3 $4 $5     #$EMSG
+      ERR=$?
+      if [ $ERR -ne 0 ]; then
+        if [ "`/bin/busybox grep "$MODULE" < /lib/modules/$KERNVER/modules.dep 2>/dev/null`" = "" ]; then
+          /bin/busybox depmod -a   2>/dev/null
+        fi
+        /bin/busybox insmod $FOUND   2>/dev/null
+        ERR=$?
+      fi
+    fi
+    return $ERR
+  fi
+}
+#
+# mknod next loop device
+# - find biggest loop device in /dev/loop/, assume it to be used
+# - preallocate (mknod) 20 more loop devices in one round
+mknod_next_loop_dev()
+{
+   debug_log "mknod_next_loop_dev" "$*"
+   local i NR END PFX
+
+   mutex_lock mknod_next_loop_dev
+
+   if [ -d /dev/loop ]; then
+      NR=$(/bin/busybox find /dev/loop/ -maxdepth 1 | /bin/busybox sed -r 's/[^0-9]+//' | /bin/busybox sort -n | /bin/busybox tail -n 1)
+      PFX="/"
+   else
+      NR=$(/bin/busybox find /dev/ -maxdepth 1 | /bin/busybox grep loop | /bin/busybox sed -r 's/[^0-9]+//' | /bin/busybox sort -n | /bin/busybox tail -n 1)
+      PFX=""
+   fi
+   NR=$(/bin/busybox expr 0$NR '+' 1 2>/dev/null)
+   END=$(/bin/busybox expr 0$NR '+' 20  2>/dev/null)
+   for i in $(/bin/busybox seq $NR $END   2>/dev/null); do
+      /bin/busybox mknod /dev/loop$PFX$i b 7 $i 2>/dev/null
+   done
+   echo /dev/loop$PFX$NR
+
+   mutex_unlock mknod_next_loop_dev
+}
+#
+# ===========================================================
+# Filesystem functions
+# ===========================================================
+#
+# Find out what locale is requested
+# If no locale is given, use the firts one available (if any)
+# $1 = locale (optional argument, if exists, no autodetection is made)
+locale_id()
+{
+   debug_log "locale_id" "$*"
+   local LOCALE i
+
+   # first try to find out locale from boot parameters
+   LOCALE="$1"
+   if [ "$LOCALE" = "" ]; then LOCALE=$LANGUAGE; fi
+   if [ "$LOCALE" = "" ]; then LOCALE=$LANG; fi
+#  if [ "$LOCALE" = "" ]; then LOCALE=$(cmdline_value lang); fi
+
+   # if not found, set it to locale from usr/lib/locale,
+   # but only if there is just ONE directory, nothing more
+   # (so we are sure which one to use)
+   if [ "$LOCALE" = "" ]; then
+      for LOCALE in $(/bin/busybox ls -A1p /usr/lib/locale 2>/dev/null | /bin/busybox grep / | /bin/busybox sed -r "s:[/]|[.].*::"); do
+         i="1$i"
+      done
+      if [ "$i" != "1" ]; then LOCALE=""; fi
+   fi
+
+   if [ "$LOCALE" != "" ]; then
+      #FSAUTO=noauto
+      /bin/busybox cat /usr/share/locale/locale.alias | /bin/busybox sed -r "s/#.*//" | /bin/busybox egrep "$LOCALE|$LOCALE""_" | /bin/busybox tail -n 1 | /bin/busybox tr -s "[[:space:]]" " " | /bin/busybox cut -d " " -f 2- | /bin/busybox tr -d " "
+   fi
+}
+#
+# Find out what iocharset to use
+iocharset()
+{
+   debug_log "iocharset" "$*"
+   local CHARSET IOCS
+
+   # if iocharset is explicitly set at the boot prompt,
+   # return it regardless the locale settings
+   #IOCHARSET=$(cmdline_value iocharset)
+   if [ "$IOCHARSET" != "" ]; then
+      echo $IOCHARSET
+      return 0;
+   fi
+
+   # else find out the iocharset from locale_id output, it should match
+   # some kernel module (after stripping out few of the dashes)
+   IOCHARSET=$(locale_id | /bin/busybox cut -d . -f 2- | /bin/busybox tr "[[:upper:]]" "[[:lower:]]" | /bin/busybox tr -d -)
+   if [ "$IOCHARSET" = "" ]; then return 0; fi
+
+   /bin/busybox find /lib/modules -name "nls_*" | /bin/busybox sed -r 's:^.*/|[.]ko$::g' | /bin/busybox cut -b 5- | while read CHARSET; do
+      if [ "$(echo $CHARSET | /bin/busybox tr "[[:upper:]]" "[[:lower:]]" | /bin/busybox tr -d -)" = "$IOCHARSET" ]; then
+         echo "$CHARSET"
+         return 0
+      fi
+   done
+   return 1
+}
+#
+# Get filesystem options
+# $1 = filesystem
+# $2 = 'fstab' or 'mount' ... 'auto'/'noauto' string is enabled (fstab) or disabled (mount)
+#
+fs_options()
+{
+   debug_log "fs_options" "$*"
+   local  IOCS AUTO
+   AUTO=$FSAUTO
+   #NOAUTO=$(cmdline_parameter noauto)
+   #if [ "$NOAUTO" = "" ]; then AUTO="auto"; fi
+   if [ "$2" = "fstab" ]; then echo -n "$AUTO," ; fi
+   if [ "$1" = "swap" ];  then echo "defaults,pri=1"; return 0; fi
+   echo -n "noatime,users,suid,dev,exec"
+
+   IOCS=$(iocharset)
+
+   if [ "$1" = "vfat" ]; then
+      echo -n ",quiet,umask=0,check=s,shortname=mixed"
+      if [ "$IOCS" ]; then
+         echo ",iocharset=$IOCS"
+      fi
+   fi
+
+   if [ "$1" = "iso9660" ]; then
+      echo -n ",ro"
+      if [ "$IOCS" ]; then
+         echo ",iocharset=$IOCS"
+      fi
+   fi
+
+   if [ "$1" = "ntfs" ]; then
+      echo -n ",ro"
+      if [ "$IOCS" ]; then
+         echo ",nls=$IOCS"
+      fi
+   fi
+
+   if [ "$1" = "ntfs-3g" ]; then
+      echo ",locale=$(locale_id)"
+   fi
+}
+#
+# discover filesystem used on the given device
+# Use vfat for msdos filesystem. Use ntfs-3g for ntfs if ntfsmount exists.
+# $1 = device, eg. /dev/hda1
+#
+device_filesystem()
+{
+   debug_log "device_filesystem" "$*"
+   local NTFS FSDEVICE
+   if [ "$1" = "" ]; then echo "" ; return 255; fi
+   FSDEVICE="$1"
+   if [ "$(echo $FSDEVICE | /bin/busybox tr -d [:digit:])" = "$FSDEVICE" ]; then
+     echo ""
+     return 1
+   fi
+   if [ ! -e $FSDEVICE ]; then echo "" ; return 1; fi
+   if [ "$BLKIDRESULT" = "" ]; then
+    set_blkid_cmd ""
+    RESULT=`$BLKID`
+    actualize_systime_criticals
+    BLKIDRESULT=$RESULT
+    if [ "`echo $RESULT | /bin/busybox grep "TYPE" 2>/dev/null`" = "" ]; then
+      set_blkid_cmd "/$UNION"
+      RESULT=`$BLKID`
+      BLKIDRESULT=$RESULT
+      if [ "`echo $RESULT | /bin/busybox grep "TYPE" 2>/dev/null`" = "" ]; then
+        echo "unrecognizable"
+        return 1
+      else
+        if [ "$RESULT" = "" ]; then
+          echo "unrecognizable"
+          return 1
+        fi
+      fi
+    fi
+   fi
+
+   actualize_systime_criticals
+   if [ $SYSTIMEPASSED -ge 0 ]; then
+     set_blkid_cmd ""
+     BLKIDRESULT=`$BLKID`
+   fi
+   RESULT=$BLKIDRESULT
+   # get the right line from blkid command
+   RESULT=$(echo "$RESULT" | /bin/busybox grep "$FSDEVICE" 2>/dev/null)
+   if [ "$(echo $RESULT | /bin/busybox grep "TYPE" 2>/dev/null)" != "" ]; then
+     if [ "$(echo $RESULT | /bin/busybox grep "SEC_TYPE")" != "" ]; then
+       RESULT=$(echo $RESULT | /bin/busybox cut -f5 -d= | /bin/busybox tr -d
+       '"' 2>/dev/null)
+     else
+       RESULT=$(echo $RESULT | /bin/busybox cut -f4 -d= | /bin/busybox tr -d
+       '"'  2>/dev/null)
+       if [ "$RESULT" = "" ]; then RESULT="unknown"; fi
+     fi
+   else
+     if [ "$(echo $RESULT | /bin/busybox grep "TYPE" 2>/dev/null)" = "" ]; then
+       RESULT="unrecognizable"
+     else
+       RESULT="unknown"
+     fi
+   fi
+   echo "$RESULT"
+   return 0
+
+}
+#
+# tell us if the given filesystem is supported within the actual kernel
+# (eg. it's in /proc/ or we know it)
+# $1 = filesystem name
+#
+is_supported_filesystem()
+{
+   debug_log "is_supported_filesystem" "$*"
+
+   if [ -e /bin/ntfsmount -a "$1" = "ntfs-3g" ]; then
+      return 0
+   fi
+
+   # the following command will set the return value
+   /bin/busybox egrep -q "[[:space:]]$1\$" /proc/filesystems
+}
+#
+# the check before does not work cause ntfs-3g needs fuse and/or ntfs
+# only fuse and ntfs can be found in /proc/filesystems
+# the location of the fuses is convention of distributor
+check_filesystem()
+{
+   debug_log "check_filesystem" "$*"
+   local FS FOUND
+   if [ "$(/bin/busybox grep "fuse" </proc/filesystems 2>/dev/null)" != "" -a "$(/bin/busybox grep "ntfs" </proc/filesystems 2>/dev/null)" != ""  ]; then
+     if [ "$1" = "ntfs-3g" ]; then
+      FOUND=`/bin/busybox find /bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin -maxepth 2 -name ntfsmount 2>/dev/null`
+      return 0
+     fi
+   fi
+   #FS=`cat /proc/filesystems | grep "$1"  2>/dev/null`
+   #  the grep is a big problem in some systems!!
+   FS=$(echo `/bin/busybox cat  /proc/filesystems`)
+   for VAR in $FS; do
+      if [ "$VAR" = "$1" ]; then  return 0; fi
+   done
+   return 1
+}
+#
+# Mount device $1 to $2
+# If the device is using vfat or ntfs filesystem, use iocharset as a mount option
+# $1 = /dev device to mount, eg. /dev/hda1, or loop file, or directory
+# $2 = mountpoint, eg. /mnt/hda1
+# $3 = optional mount options, for example "ro", or "remount,rw"
+# $4 = optional filesystem name, in order to skip autodetection
+#
+mount_device()
+{
+   debug_log "mount_device" "$*"
+   local FS DEV LOOPDEV OPTIONS FILESYSTEM ERR
+
+   # make sure we have enough arguments
+   if [ "$2" = "" ]; then return 1; fi
+   #if [ "$1" = "" ]; then rmdir "$2" ; return 1; fi
+   if [ "$1" = "" ]; then return 1; fi
+   /bin/busybox mkdir -p "$2" 2>/dev/null #$EMSG
+
+   DEV="$1"
+   # is filesystem specified? else check it out from device
+   if [ "$4" != "" ]; then
+      FS="$4"
+   else
+      FS=$(disk_type $DEV)
+      FS=$(echo $FS | /bin/busybox cut -f5 -d'|')
+   fi
+   # is the filesystem in the kernel?
+   if check_filesystem "$FS" ; then
+     if [ "$FS" != "" ]; then OPTIONS=$(fs_options $FS mount); FS="-t $FS"; fi
+   else
+      FS=""
+      # TODO: should this function load automatically a filesystem driver?
+      # or has the programmer to verify each case?
+      # definitely no: the user must have evidence for a system device is not accessible
+      # the way he uses the machine by specification of kernel boot parameters
+   fi
+   if [ "$OPTIONS" ]; then OPTIONS="$OPTIONS"; else OPTIONS=""; fi
+   if [ -f "$DEV" ];  then OPTIONS="loop,$OPTIONS"; fi
+   if [ -d "$DEV" ];  then OPTIONS="rbind,$OPTIONS"; fi
+   if [ "$3" ];       then OPTIONS="$3,$OPTIONS"; fi
+   OPTIONS=$(echo "$OPTIONS" | /bin/busybox sed -r "s/^,+//")
+   if [ "$OPTIONS" != "" ]; then OPTIONS=$(echo "-o $OPTIONS"); else OPTIONS=""; fi
+   echolog "mounting filesystem $FS at directory $2..."
+   echolog "...for mountpoint $DEV with options $OPTIONS "
+   if [ "$FS" = "-t ntfs-3g" ]; then
+      ntfsmount "$DEV" "$2"  $OPTIONS >/dev/null 2>&1
+      ERR=$?
+   else
+      /bin/busybox mount -n  $OPTIONS $FS "$DEV" "$2" >/dev/null 2>&1
+      ERR=$?
+   fi
+
+   # not enough loop devices? try to create one.
+   if [ $ERR -eq 2 ]; then
+ #      echolog "error $ERR occurred, trying to mount again with next loop device.... "
+     LOOPDEV=$(mknod_next_loop_dev)
+     OPTIONS=$(echo "$OPTIONS" | /bin/busybox sed -r "s/,loop//g")
+     losetup "$LOOPDEV" "$DEV" 2>/dev/null # busybox's losetup doesn't support -r
+     if [ $? -ne 0 ]; then
+        losetup -r "$LOOPDEV" "$DEV" 2>/dev/null # force read-only in case of error
+     fi
+     /bin/busybox mount -n  $OPTIONS $FS "$LOOPDEV" "$2" >/dev/null 2>&1
+     ERR=$?
+   fi
+
+   # if nothing works, try to force read-only mount
+   if [ $ERR -ne 0 -a $ERR -ne 255 ]; then
+  #     echolog "error $ERR occurred, trying to mount again as read-only filesystem... "
+     if [ "$(echo $OPTIONS | /bin/busybox grep "rw")" != "" ]; then OPTIONS=$(echo "$OPTIONS,ro") ; fi
+     /bin/busybox mount  -n "$OPTIONS" "$FS" "$DEV" "$2" >/dev/null 2>&1
+     ERR=$?
+   fi
+
+   if [ $ERR -ne 0 ]; then
+      echolog "error $ERR occurred, giving up! "
+      echolog "Filesystem $FS not mountable at $DEV. "
+      /bin/busybox rmdir $2 2>/dev/null
+   else
+      echolog "....successfully mounted $DEV..."
+      echolog "...at $2 with filesystem $FS"
+   fi
+   return $ERR
+}
+#
+# unmount all parameters. If the parameter is not mountpoint but
+# it's a file or directory, umount the device where the file/dir is stored.
+#
+# First try normal umount, if that fails then remount read-only
+# If -l parameter is specified, do lazy-umount when normal umount fails
+# $1..$n = files/directories/devices to be unmounted
+#
+fumount()
+{
+   debug_log "fumount" "$*"
+   local TARGET LAZY
+
+   while [ "$1" ]; do
+      if [ "$1" = "-l" ]; then LAZY="yes"; shift; fi
+      TARGET=$(/bin/busybox readlink -f "$1" 2>/dev/null)
+      if ! is_mount_point "$TARGET"; then
+         if [ -f "$TARGET" -o -d "$TARGET" ]; then
+            TARGET=$(/bin/busybox df "$TARGET" 2>/dev/null | /bin/busybox tail -n 1 | /bin/busybox tr -s " " | /bin/busybox cut -d " " -f 6 2>/dev/null)
+         fi
+      fi
+
+      if [ "$TARGET" != "" ]; then
+         /bin/busybox umount -n "$TARGET" >/dev/null 2>&1
+         if [ $? -ne 0 ]; then
+            /bin/busybox mount -n -o remount,ro -t ignored ignored "$TARGET" >/dev/null 2>&1
+            if [ "$LAZY" ]; then /bin/busybox umount -n -l "$TARGET" >/dev/null 2>&1; fi
+         fi
+      fi
+      shift
+   done
+}
+#
+kernvercheck()
+{
+  local DEFMINORVER DEFMAJORVER
+  debug_log "kernvercheck"
+  # check independently from busybox configuration
+  # KERNVER is now set in initrd-functions
+  if [ "$KERNVER" = "" ]; then
+      KERNVER="`/bin/busybox uname -r`"
+      echolog "Set again  Kernelversion to : $KERNVER"
+  fi
+  
+  if check_filesystem "aufs"; then
+     LAYERFS=aufs
+  elif check_filesystem "unionfs"; then
+     LAYERFS=unionfs
+  fi
+  
+  echolog  " You are booting $OSNAME-$OSVER with kernelversion $KERNVER"
+  echolog  " build: `/bin/busybox cut -f5-17 -d" " </proc/version` "
+  if [ "$LAYERFS" != "" ]; then
+    echolog " the union/layer filesystem defaults to $LAYERFS "
+  fi
+#
+
+  if [ $(echo $KERNVER | /bin/busybox cut -f1 -d.) -lt $(echo $DEFKERNVER | /bin/busybox cut -f1 -d.) ]; then
+    echolog " $KERNVER is historical before the Default Kernel $DEFKERNVER
+        This is not supported by $OSNAME-$OSVER and these init scripts,
+        reconfigure your system with a newer version from ftp.kernel.org or ftp.eu.kernel.org !"
+  fi
+  MAJORKERNVER=$(echo $KERNVER | /bin/busybox cut -f2 -d.)
+  MINORKERNVER=$(echo $KERNVER | /bin/busybox cut -f3 -d. | /bin/busybox cut -f1 -d-)
+  DEFMAJORVER=$(echo $DEFKERNVER | /bin/busybox cut -f2 -d.)
+  DEFMINORVER=$(echo $DEFKERNVER | /bin/busybox cut -f3 -d. | /bin/busybox cut -f1 -d-)
+  if [ $(echo $KERNVER | /bin/busybox cut -f1 -d.) -eq $(echo $DEFKERNVER | /bin/busybox cut -f1 -d.) ]; then 
+    if [ $MAJORKERNVER -lt $DEFMAJORVER -o $MINORKERNVER -lt $DEFMINORVER ]; then
+      echolog  " $KERNVER is historical before the Default Kernel $DEFKERNVER
+        This is not supported by $OSNAME-$OSVER and these init scripts,
+        however we continue, but some day nearby
+        reconfigure your system !"
+    fi
+  fi
+
+  return 0
+}
+#
+# TODO: very important with a lot of necessary logic!!
+change_kexec_cmdline()
+{
+  echo ""
+  return 0
+}
+#
+do_reboot()
+{
+  debug_log "do_reboot" "$*"
+  /bin/kexec -v  2>/dev/null
+  if [ $? -ne 0  ]; then
+    echolog "..... kexec not found or not executable !"
+    return 3
+  fi
+  #  kexec needs /lib/libz.*
+  if [ "$(/bin/busybox ls -1 /lib/libz* 2>/dev/null)" = "" -a "$(/bin/busybox ls -1 /usr/lib/libz* 2>/dev/null)" = "" ]; then
+    echolog "..... kexec needs libz and is not otherwise executable !"
+    return 4
+  fi
+  if [ -e "$1" ]; then
+    local ADD COMMAND  INITRDVAR
+    COMMAND="`/bin/busybox cat /proc/cmdline`"
+    ADD=`change_kexec_cmdline`
+    COMMAND="$(echo $COMMAND $ADD)"
+    #  retain_initrd does not work over all architectures
+    #if [ "$(echo $COMMAND | /bin/busybox grep "retain_initrd" 2>/dev/null)" != "" ]; then
+    #   INITRDVAR="--reuseinitrd"
+    #else
+    if [ "$INITRD" != "" ]; then
+      INITRDVAR="--initrd=/boot/$INITRD"
+    else
+      INITRDVAR=""
+    fi
+    /bin/busybox cp -f /$MOUNTDIR/$(/bin/busybox basename $BOOTDEV)/boot/$INITRD  /boot/$INITRD  2>/dev/null
+    #fi
+    # do it with making sure that kernel does not overwrite $INITRD in memory
+    /bin/kexec -l $1   "$INITRDVAR"  --command-line="$COMMAND"
+    if [ $? -ne 0  ]; then
+     echolog ".... failed to load kernel $1 ! retrying with overwriting avoided..."
+     /bin/busybox cp -f /$MOUNTDIR/$(/bin/busybox basename $BOOTDEV)/boot/$INITRD  /boot/$INITRD  2>/dev/null
+     /bin/kexec -u $1
+     /bin/kexec -l $1  "$INITRDVAR"  --command-line="$COMMAND"
+     if [ $? -ne 0  ]; then
+       echolog " Kernel $1 not loadable! Continuing with the original boot...."
+       return 2
+     fi
+    fi
+    echolog ".....starting reboot with $1 ....."
+    /bin/kexec -e
+    if [ $? -ne 0  ]; then
+     echolog "..... failed to boot $1 !  Aborting...."
+     /bin/kexec -u  $1
+     return 1
+    fi
+    /bin/kexec -u  $1
+    return 0
+  fi
+  header "...something went wrong in rebooting hardware-optimized kernel $1 !"
+  header "Probably the kernel $1 or /boot/$INITRD does not exist. Continuing as good as possible with vmlinuz-$KERNVER...."
+  return 1
+}
+#
+reboot_hardware_optimized()
+{
+  debug_log "reboot_hardware_optimized"  "$*"
+  # top down cascade through all possibilities
+  local EXT FNAME
+  EXT=$EXTENT
+  BOOTKERNEL=`/bin/busybox find $1/boot  -name "vmlinuz*$EXT" 2>/dev/null`
+  if [ "$BOOTKERNEL" = "" ]; then
+    # do fallback to other kernels if present
+    while [ "$BOOTKERNEL" = "" ]; do
+       EXT="$(previous_matching_extent "$EXT")"
+       BOOTKERNEL=`/bin/busybox find /boot  -name "vmlinuz*$EXT" 2>/dev/null`
+       if [ "$EXT" = "" ]; then break; fi
+    done
+  fi
+
+  if [ "$BOOTKERNEL" = "" ]; then
+  {
+    echolog " no valid kernel found for reboot with kexec!"
+    echolog " continuing original boot.... "
+    return 0
+  }
+  fi
+  # clean up unused kernels
+  for  FNAME in $(/bin/busybox ls -1 /boot/vmlinuz-* 2>/dev/null); do
+    if [ "$FNAME" != "$BOOTKERNEL" ]; then
+      /bin/busybox rm -f $FNAME 2>/dev/null
+    fi
+  done
+
+  if [ "$BOOTKERNEL" = "/boot/vmlinuz-$KERNVER" ]; then
+  {
+    echolog " Confirming booting kernel $KERNVER is no more optimizable."
+    echolog " continuing this boot.... "
+    return 0
+  }
+  fi
+
+  echolog " Rebooting with new kernel $BOOTKERNEL.... "
+  do_reboot $BOOTKERNEL
+  if [ $? -eq 0 ]; then return 0; fi
+
+  local ANSWER
+  ANSWER=""
+  echolog "The kernel $BOOTKERNEL is proposed for reboot but did not boot for some reason."
+  echolog "Hit <RETURN> to continue with vmlinuz-$KERNVER or specify manually another one:"
+  #echo $(find $1/ -name "vmlinuz*")
+  read ANSWER
+  if [ "$ANSWER" = "" ]; then
+    return 0
+  else
+    do_reboot $ANSWER
+    return 0
+  fi
+
+}
+#
+reset_quietness()
+{
+  if [ "`/bin/busybox grep "quiet" </proc/cmdline`" = "" ]; then
+    QUIET=""
+  fi
+}
+#
+check_systemmodule_extension()
+{
+  debug_log "module_extension_check"
+  mount -o remount,rw /  2>/dev/null
+  local PREVEXTENSION=$DEFEXTENSION
+  QUIET="quiet"
+  /bin/busybox mkdir -p /usr  $EMSG
+  if [ -e /testfile.sfs4 ]; then
+  {
+     /bin/busybox mkdir -p /usr/mnt  $EMSG
+     mount_device  "/testfile.sfs4"   "/usr/mnt"   loop,ro  squashfs
+     if [ $? -ne 0 ]; then
+       echolog " error in mounting probe for filename extension .sfs4 , continuing... "
+     # in the mounted squashfs directory is a file containing initrd-name
+     elif [ -e /usr/mnt/initrd-name ]; then
+     {
+       EXTENSION="sfs4"
+       echolog " The extension for system modules to be merged into rootfs is: .$EXTENSION "
+       fumount /testfile.sfs4
+       fumount /usr/mnt
+       reset_quietness
+       rm testfile.* 2>/dev/null
+       return 0
+     }
+     fi
+  }
+  fi
+
+  if [ -e /testfile.sfs3 ]; then
+  {
+      /bin/busybox mkdir -p /usr/mnt  $EMSG
+      mount_device  "/testfile.sfs3"   "/usr/mnt"   loop,ro  squashfs
+      if [ $? -ne 0 ]; then
+        echolog " error in mounting probe for filename extension .sfs3 , continuing... "
+      # in the mounted squashfs directory is a file containing initrd-name
+      elif [ -e /usr/mnt/initrd-name ]; then
+      {
+        EXTENSION="sfs3"
+        echolog " The extension for system modules to be merged into rootfs is:  .$EXTENSION "
+        fumount /testfile.sfs3
+        fumount /usr/mnt
+        reset_quietness
+        rm testfile.* 2>/dev/null
+        return 0
+      }
+      fi
+  }
+  fi
+
+  if [ -e /testfile.lzm ]; then
+  {
+      /bin/busybox mkdir -p /usr/mnt  $EMSG
+      mount_device  "/testfile.lzm"   "/usr/mnt"   loop,ro  squashfs
+      if [ $? -ne 0 ]; then
+        echolog " error in mounting probe for filename extension .lzm , continuing... "
+      # in the mounted squashfs directory is a file containing initrd-name
+      elif [ -e /usr/mnt/initrd-name ]; then
+      {
+        EXTENSION="lzm"
+        echolog " The extension for system modules to be merged into rootfs is:  .$EXTENSION "
+        fumount /testfile.lzm
+        fumount /usr/mnt
+        rm testfile.* 2>/dev/null
+        reset_quietness
+        return 0
+      }
+      fi
+  }
+  fi
+  reset_quietness
+  return 0
+}
+#
+# THIS IS NECESSARY BEFORE SWITCHING TO NEW ROOTFS
+# NEW: We can now deposit all kernelmodules in
+# $LIVECDNAME/optional with appropriate extension sfs3/sfs4/lzm for kernel
+# and all superfluous kernelmodules from other versions are purged away
+verify_all_kernelmodules()
+{
+  debug_log "verify_all_kernelmodules" "$*"
+  echolog "handling all kernelmodules........."
+
+  /bin/busybox mount -o remount,rw /  2>/dev/null
+  # merge modules from initramfs and $UNION
+  copy_kernelmodules $2
+  echolog "merged all modules from /lib/modules/$KERNVER and $2/lib/modules/$KERNVER....."
+  echolog "and purged all unnecessary modules from other kernels..."
+  echolog "now looking for kernelmodules in UCLAX systemmodule files on medias..."
+  local MODULE ERR
+  MODULE=`/bin/busybox find $1 -name "drivers-$KERNVER.$EXTENSION" 2>/dev/null`
+
+  if [ "$MODULE" = "" ]; then
+  {
+   echolog " no drivers-$KERNVER.$EXTENSION file for kernelmodules found..."
+   echolog " in filesystems  $1, for kernel version $KERNVER ...."
+   return 1
+  }
+  fi
+  /bin/busybox mount -o remount,rw / 2>/dev/null
+  /bin/busybox mkdir -p $2/lib/mod $EMSG
+  /bin/busybox mount -t squashfs -o loop,ro $MODULE $2/lib/mod 2>/dev/null
+  if [ $? -ne 0 ]; then
+  {
+    echolog " error in mounting $MODULE at mountpoint $2/lib/mod, retrying..."
+    mount_device "$MODULE" "$2/lib/mod" loop,ro squashfs
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+     echolog "...error again in mounting $MODULE at mountpoint $2/lib/mod , giving up !"
+     /bin/busybox rmdir $2/lib/mod $EMSG
+     return $ERR
+    fi
+  }
+  fi
+  #  cp/merge kernelmodules from $1/base $1/modules or $1/optional
+  /bin/busybox mkdir -p $2/lib/modules  2>/dev/null
+  /bin/busybox mkdir -p $2/lib/modules/$KERNVER  2>/dev/null
+  /bin/busybox cp -fdPR $2/lib/mod/* $2/lib/modules/$KERNVER/  2>/dev/null
+  fumount  $2/lib/mod
+  purge_unused_kernelmodules "$2" "$0"
+  /bin/busybox rmdir    $2/lib/mod
+  echolog "found $MODULE as file drivers-$KERNVER.$EXTENSION for kernelmodules in $KERNVER..."
+  echolog "...in the filesytems $1 ..and merged with $2/lib/modules/$KERNVER!"
+  return 0
+}
+#
+# ===========================================================
+# live module functions
+# ===========================================================
+#
+# Create module
+# call mksquashfs with apropriate arguments
+# $1 = directory which will be compressed to squashfs module
+# $2 = output filesystem module file
+# $3..$9 = optional arguments like -keep-as-directory or -b 123456789
+#
+create_module()
+{
+   debug_log "create_module" "$*"
+   /bin/busybox rm -f "$2" # overwrite, never append to existing file
+   local EXT
+   EXT=$3
+   if [ "$EXT" = "" ]; then  echolog "no extension given (3rd parameter)!"; return 1; fi
+   if [ "$EXTENSION" = "sfs4" ]; then
+     mksquashfs4 "$1" "$2" -all-root -always-use-fragments   $4  $5 $6 $7 $8 $9 2>/dev/null
+   fi
+   if [ "$EXTENSION" = "lzm" ]; then
+     mksquashfs "$1" "$2" -b 256K -lzmadic 256K -all-root -always-use-fragments  $4 $5 $6 $7 $8 $9  2>/dev/null
+   fi
+   if [ "$EXTENSION" = "lzm4" ]; then
+     mksquashfs "$1" "$2" -b 512K -lzmadic 512K -all-root -always-use-fragments  $4 $5 $6 $7 $8 $9  2>/dev/null
+   fi
+   if [ $? -ne 0 ]; then return 1; fi
+   /bin/busybox chmod a-wx "$2" # remove execute and write attrib
+   /bin/busybox chmod a+r "$2" # add read for everyone
+}
+#
+# ismountpoint exits with 0 if $1 is mountpoint, else exits with 1
+# $1 = directory or loop_file
+#
+is_mount_point()
+{
+   debug_log "is_mount_point" "$*"
+   local MDIR
+   MDIR=$(/bin/busybox readlink -f "$1")
+   /bin/busybox cat /proc/mounts | /bin/busybox cut -d " " -f 2 | /bin/busybox egrep "^$MDIR\$" >/dev/null 2>&1
+}
+#
+# Mount filesystem module to destination directory
+# $1 = path with the compressed module
+# $2 = destination folder
+#
+mount_module()
+{
+   debug_log "mount_module" "$*"
+   mount_device "$1" "$2" loop,ro squashfs 2>/dev/null
+}
+#
+# Find LZM modules in given dir
+# $1 = root directory of mounted DATAdir
+#
+find_modules()
+{
+   debug_log "find_modules" "$*"
+    /bin/busybox find "$1/base" "$1/modules" "$1/optional" -name "*.$EXTENSION" 2>/dev/null | /bin/busybox sort;
+    if [ $? != 0 ]; then
+      echolog " no module files found with appropriate extension $EXTENSION, please enter extension manually: "
+      read EXTENSION
+      /bin/busybox find "$1/base" "$1/modules" "$1/optional" -name "*.$EXTENSION" 2>/dev/null | /bin/busybox sort;
+      if [ $? != 0 ]; then
+        echolog "no modules with Extension .$EXTENSION found!"
+        return 1
+      fi
+    fi
+}
+#
+find_module()
+{
+   debug_log "find_modules" "$*"
+   /bin/busybox find "$1/base" "$1/modules" "$1/optional" -name "$2.$EXTENSION" 2>/dev/null
+}
+#
+# List all modules in all directories (base, modules, optional)
+# and filter out unneeded optional modules (not specified by load= kernel parameter)
+# separator for load and noload arguments is "," or ";"
+# $1 = root directory of mounted DATAdir
+#
+list_modules()
+{
+   debug_log "list_modules" "$*"
+   #local LOAD NOLOAD
+   local MODNAME LINE
+
+   LOAD=$(echo $LOAD | /bin/busybox sed -r 's/\*/.\*/g' | /bin/busybox sed -r 's/,|;/|/g')
+   NOLOAD=$(echo $NOLOAD | /bin/busybox sed -r 's/\*/.\*/g' | /bin/busybox sed -r 's/,|;/|/g')
+   find_modules "$1" | while read LINE; do
+      MODNAME=$(echo $LINE | /bin/busybox cut -b ${#1}- | /bin/busybox cut -b 2-)
+      if [ "$(echo $LINE | /bin/busybox grep /optional/)" ]; then
+         if [ ! "$LOAD" -o ! "$(echo $MODNAME | /bin/busybox egrep -i "$LOAD")" ]; then continue; fi
+      fi
+      if [ "$NOLOAD" -a "$(echo $MODNAME | /bin/busybox egrep -i "$NOLOAD")" ]; then continue; fi
+      echo $LINE
+   done
+}
+#
+# Insert a directory tree $2 to an union specified by $1
+# Top-level read-write branch is specified by it's index 0
+# Using =rr enables aufs to optimize real readonly branches
+# $1 = union absolute path (starting with /)
+# $2 = path to data directory
+#
+union_insert_dir()
+{
+   debug_log "union_insert_dir" "$*"
+   local ERR
+   if [ "$LAYERFS" != "unionfs" ]; then
+   {
+     echolog "inserting directory $2 to target $1 with $LAYERFS..."
+     /bin/busybox mount -n -o remount,add:1:$2=rr aufs $1
+     if [ $? -ne 0 ]; then
+       echolog "error while inserting directory $2 to target $1 with $LAYERFS!"
+       echolog "retrying with aufs25...."
+       /bin/busybox mount -n -o remount,add:1:$2=rr aufs25 $1
+       if [ $? -ne 0 ]; then
+         echolog "no aufs insertion for $2 to $1 possible!! "
+         return 1
+       fi
+     fi
+   }
+   else
+   {
+#  TODO: mount at the right place instead of copying file contents to RAMDISK
+     /bin/busybox chmod -fR u=rwx  $1
+     /bin/busybox chmod -fR g=rwx  $1
+     if [ $? -ne 0 ]; then
+      /bin/busybox mount -o rw,remount /
+      /bin/busybox chmod -fR u=rwx  $1
+      /bin/busybox chmod -fR g=rwx  $1
+     fi
+#      cp -fdpR
+     if [ "$1" != "" -a "$2" != "" ]; then
+     {
+#       cp -fRPd $2/*  $1  2>/dev/null
+       /bin/busybox cp -fRP  $2/*  $1  #2>/dev/null
+       ERR=$?
+       if [ $ERR -ne 0 ]; then
+         echolog "error $ERR during copying the directory $2 --> to target $1 !!"
+         return 2
+       fi
+       echolog "copied successfully directory $2 --> to target $1 ..."
+     }
+     else
+       echolog "  no parameters specified $1 , $2 "
+       return 1
+     fi
+   }
+   fi
+   return 0
+}
+#
+# Insert one single filesystem module to the union
+# $1 = union absolute path
+# $2 = module full path
+# $3 = destination folder, where images will be mounted to
+# $4 = prefix length strip (number of characters)
+#
+union_insert_module()
+{
+   debug_log "union_insert_module" "$*"
+   local TARGET
+   TARGET="$3/$(/bin/busybox basename $2)"
+   if is_mount_point $TARGET; then return 1; fi # skip already used modules
+   /bin/busybox mkdir -p $TARGET
+   mount_module $2 $TARGET
+   if [ $? -ne 0 ]; then
+      echolog "Cannot read squashfs-module data of $2 - corrupted file or wrong extension ?" #>&2
+      echolog " retrying..."
+      mount_module $2 $TARGET
+      if [ $? -ne 0 ]; then
+        echolog "can't mount $2 to directory $TARGET " #>&2
+        return 1
+      fi
+   fi
+   union_insert_dir $1 $TARGET
+   ERR=$?
+   if [ $ERR -ne 0 ]; then
+      echolog "error $ERR during insertion squashfs-module from $1 to union dir $TARGET " #>&2
+      return 2
+   fi
+   #echo "$2" | cut -b $(($4+1))-
+   #echolog "$2" >/dev/null
+   return 0
+}
+#
+# Insert all filesystem modules from $2 directory and subdirectories, to the union
+# $1 = union absolute path (starting with /)
+# $2 = LiveCD data dir (with directories /base, /modules, etc.)
+# $3 = destination folder, where images will be mounted to
+#
+union_insert_modules()
+{
+   debug_log "union_insert_modules" "$*"
+   local INSERTED ERR
+   list_modules $2 | while read MODULE; do
+     union_insert_module $1 $MODULE $3
+      ERR=$?
+     if [ $ERR -ne 0 ]; then
+      #echolog " -> $(echo $INSERTED | sed -r s:^/::)"; fi
+      echolog " error $ERR in insertion of $MODULE !"
+     fi
+   done
+   return 0
+}
+#
+# Copy LiveCD modules to RAM directory
+# will copy only /boot, and module files from $1
+# $1 = data directory
+# $2 = target directory in RAM
+#
+copy_to_ram()
+{
+   debug_log "copy_to_ram" "$*"
+#   -fdpR is important to overwrite existing defaults!!
+   /bin/busybox cp -fdpR "$1/rootcopy" "$2" 2>/dev/null # could be empty
+   list_modules "$1" | while read MODULE; do
+     TARGET=$(/bin/busybox dirname "$MODULE" | /bin/busybox cut -b ${#1}- | /bin/busybox cut -b 2-)
+     /bin/busybox mkdir -p "$2/$TARGET"
+     /bin/busybox cp -fdpR "$MODULE" "$2/$TARGET" #$EMSG
+     if [ $? -ne 0 ]; then
+      echolog "Using ramsize=$RAMSIZE. Maybe try to change ramsize=xxxxxx  in kernel parameters."
+      fatal "Error during copy to ram."
+     fi
+   done
+}
+#
+# ===========================================================
+# discovery functions
+# ===========================================================
+# List all supported network drivers
+#
+list_network_drivers_old()
+{
+   debug_log "list_network_drivers_old" "$*"
+
+   # these drivers are probed in Slackware's initrd
+   # (see initrd.img/scripts/network.sh).
+   # I don't have personal experiences with most of these drivers
+   # so I'll be happy if you report any particular one to be not working
+   # (eg. causing hangups) in order to remove it from this list.
+
+   echo 3c59x acenic atl1 b44 bnx2 de4x5 dgrs e100 eepro100 e1000 epic100 hp100 ne2k-pci \
+   olympic pcnet32 r8169 rcpci 8139too 8139cp sktr skge sky2 tulip via-rhine \
+   yellowfin tg3 dl2k ns83820 depca ibmtr 3c501 3c503 3c505 3c507 3c509 3c515 \
+   ac3200 acenic at1700 cosa cs89x0 de4x5 de600 de620 e2100 eepro eexpress \
+   es3210 eth16i ewrk3 fmv18x forcedeth hostess_sv11 hp-plus hp lne390 ne3210 \
+   ni5010 ni52 ni65 sb1000 sealevel smc-ultra sis900 smc-ultra32 smc9194 wd \
+   | /bin/busybox tr " " "\n"
+}
+#
+# list all network drivers in the used and actual kernel
+# valid modes are 1,2,3
+# 1 = list all modules with \n separated in a list for use with modprobe
+# 2 = list all modules in one single line
+# 3 = list all fully qualified filenames in one single line
+# default is 1
+list_network_drivers()
+{
+   #set -x
+   debug_log "list_network_drivers" "$*"
+   local FN LINE FILENAMES FULLFILENAMES MODE
+   MODE=$1
+   if [ "$MODE" = "" ]; then MODE=1; fi
+   if [ $MODE -ge 4 ]; then echo "" ; return 1; fi
+   LISTE=`/bin/busybox find /lib/modules/$KERNVER/kernel/drivers/net -name "*.ko*"  2>/dev/null`
+   if [ "$LISTE" = "" ]; then echo ""; return 1; fi
+   FILENAMES=""
+   for LINE in $LISTE; do
+     FN="$(/bin/busybox basename $LINE | /bin/busybox cut -f1 -d.)"
+     if [ "$FN" != "" ]; then
+       FILENAMES=$(echo $FILENAMES $FN)
+       FULLFILENAMES=$(echo $FULLFILENAMES $LINE)
+       if [ $MODE = 1 ]; then
+         echo $FN
+       fi
+     fi
+   done
+   if   [ $MODE = 2 ];   then  echo $FILENAMES;
+   elif [ $MODE = 3 ];   then  echo $FULLFILENAMES;
+   else echo ""; return 1; fi
+   return 0
+}
+#
+# List all CD-ROMs
+# by using /proc entries
+#
+list_cdrom_devices()
+{
+   debug_log "list_cdrom_devices" "$*"
+   local CDDEVICE
+   for CDDEVICE in $DEVICELIST; do
+     if [ "$(echo $CDDEVICE | /bin/busybox grep "cdrom" 2>/dev/null)" != "" ]; then
+       echo "$(echo $CDDEVICE | /bin/busybox cut -f1 -d '|' 2>/dev/null)"
+     fi
+   done
+}
+#
+# List all mounted directories
+#
+list_mounted_directories()
+{
+   debug_log "list_mounted_directories" "$*"
+   if [ "$MOUNTDIR" != "" ]; then
+      /bin/busybox ls -1 $MOUNTDIR | while read DIR; do
+         if is_mount_point $MOUNTDIR/$DIR; then echo $DIR; fi
+      done
+      return 0
+   fi
+   echo ""
+   return 1
+}
+#
+# List all devices with filesystems
+# Return empty result when nohd parameter was given.
+#
+list_partition_devices()
+{
+   debug_log "list_partition_devices" "$*"
+   local PARTDEV
+   for PARTDEV in $PARTITIONLIST; do
+      echo /dev/$PARTDEV
+   done
+}
+#
+# List all disk devices
+#
+list_disk_devices()
+{
+   debug_log "list_disk_devices" "$*"
+   local DEV DISKDEV
+   DEV="x"
+   # nohd parameter specified - list only external disks
+   for DEV in $DEVICELIST; do
+     DISKDEV="$(echo $DEV | /bin/busybox cut -f1 -d '|' 2>/dev/null)"
+     if [ "$NOHD" != "" ]; then
+       if [ "$(echo $DEV | /bin/busybox grep "usb-storage" 2>/dev/null)" != "" ]; then
+         echo "$DISKDEV"
+       fi
+     else
+       if [ "$(echo $DEV | /bin/busybox grep "cdrom" 2>/dev/null)" = "" ]; then
+         echo "$DISKDEV"
+       fi
+     fi
+   done
+}
+#
+# check the type of disk
+# returns:
+# 0 - for successfully found disk
+# 254   for empty parameter
+# 255 for not existing device: [ ! -e $1 ]; , $1 != /dev/xxx
+
+# echoes:  device|bus-type|media-type|filesystem-type|additional parameters
+# where:   device : existing disk devices
+# needs : blkid from coreutils with filesystem type in output TYPE=
+disk_type()
+{
+   debug_log "disk_type" "$*"
+   if [ "$1" = "" ]; then
+     echo ""
+     return 255
+   fi
+   if [ "$1" = "*" ]; then
+     echo ""
+     return 254
+   fi
+
+   local REMO DEV PARTDEV INTERNDEV DISKDEV CDROM IDE SCSI FS DEVTYPE SUBPATH UEVENT ADD DEVPATH PARTITION
+   REMO="0"
+   DEV="x"
+   DISKDEV=$1
+   DEV="`/bin/busybox basename "$DISKDEV" | /bin/busybox tr -s / 2>/dev/null`"
+   if [ -e "$DISKDEV" ]; then
+   {
+     #DEV="`basename "$1" | tr -s / | cut -c 1-3`"
+     PARTDEV="`echo $DEV | /bin/busybox tr -d [:digit:] 2>/dev/null`"
+     DEVPATH="`/bin/busybox readlink -f /sys/block/$PARTDEV 2>/dev/null`"
+     if [ "$(/bin/busybox ls -1 $DEVPATH/$DEV 2>/dev/null)" != "" ]; then SUBPATH=$DEVPATH/$DEV; fi
+     if [ "$DEV" = "$PARTDEV" ]; then SUBPATH=$DEVPATH; fi
+     UEVENT="$SUBPATH/uevent"
+     if [ "$(/bin/busybox ls -1 $DEVPATH/uevent 2>/dev/null)" = "" ]; then
+       DEVPATH="`/bin/busybox readlink -f /sys/block/$DEV 2>/dev/null`"
+       SUBPATH="$DEVPATH"
+       if [ "$(/bin/busybox ls -1 $DEVPATH/uevent 2>/dev/null)" = "" ]; then
+        echo ""
+        return 254
+       else
+         UEVENT="$DEVPATH/uevent"
+       fi
+     fi
+     DEVPATH="`echo $DEVPATH | /bin/busybox tr "//" "/" 2>/dev/null`"
+     SUBPATH="`echo $SUBPATH | /bin/busybox tr "//" "/" 2>/dev/null`"
+     #echo $SUBPATH $UEVENT
+     #echo $DEV $PARTDEV $DEVPATH
+     PARTITION=`/bin/busybox cat $DEVPATH/$DEV/partition  2>/dev/null`
+     if [ "$PARTITION" = "" ]; then PARTITION=0; fi
+     REMO=`/bin/busybox cat $SUBPATH/removable  2>/dev/null`
+     ADD="`/bin/busybox cat $SUBPATH/dev 2>/dev/null`|`/bin/busybox cat $SUBPATH/size 2>/dev/null`|`/bin/busybox cat $SUBPATH/ro 2>/dev/null`|`/bin/busybox cat $SUBPATH/capability 2>/dev/null`|$REMO|$PARTITION"
+     INTERNDEV="`/bin/busybox readlink -f $DEVPATH/device 2>/dev/null`"
+     DEVTYPE=`/bin/busybox cat $UEVENT 2>/dev/null | /bin/busybox grep "DEVTYPE=" 2>/dev/null | /bin/busybox cut -f2 -d= 2>/dev/null`
+     SCSI=`/bin/busybox cat $INTERNDEV/uevent 2>/dev/null | /bin/busybox grep "scsi" 2>/dev/null`
+     IDE=`/bin/busybox cat $INTERNDEV/uevent 2>/dev/null | /bin/busybox grep "ide" 2>/dev/null`
+     # if our blkid exists and reports TYPE
+     actualize_systime_criticals
+     if [ $SYSTIMEPASSED -ge 0 ]; then
+       set_blkid_cmd ""
+       BLKIDRESULT=`$BLKID`
+     fi
+     FS="$(echo "$BLKIDRESULT" | /bin/busybox grep $DISKDEV 2>/dev/null)"
+     if [ "$(echo $FS | /bin/busybox grep $DISKDEV | /bin/busybox grep "TYPE" 2>/dev/null)" != "" ]; then
+       if [ "$(echo $FS | /bin/busybox grep $DISKDEV | /bin/busybox grep "SEC_TYPE" 2>/dev/null)" != "" ]; then
+         FS=$(echo $FS | /bin/busybox cut -f5 -d= | /bin/busybox tr -d '"' 2>/dev/null)
+       else
+         FS=$(echo $FS | /bin/busybox cut -f4 -d= | /bin/busybox tr -d '"' 2>/dev/null)
+         if [ "$FS" = "" ]; then FS="unknown"; fi
+       fi
+     else
+       if [ "$(echo $FS | /bin/busybox grep "TYPE" 2>/dev/null)" = "" ]; then
+         FS="unrecognizable"
+       else
+         FS="unknown"
+       fi
+     fi
+     if [ "$PARTDEV" = "$DEV" ]; then FS="unknown"; fi
+
+     if [ "$SCSI" != "" ]; then
+     {
+       CDROM="`/bin/busybox cat $INTERNDEV/uevent 2>/dev/null | /bin/busybox grep "cdrom" 2>/dev/null`"
+       if [ "$CDROM" != "" ]; then
+          echo "$DISKDEV|scsi|$DEVTYPE|cdrom|isoO9660|$ADD"
+       fi
+       INTERNDEV="$(/bin/busybox readlink -f $DEVPATH/device  2>/dev/null)"
+       INTERNDEV="$(/bin/busybox basename $INTERNDEV | cut -f1 -d: 2>/dev/null)"
+       if [ "/proc/scsi/usb-storage/$INTERNDEV" = "$(/bin/busybox ls -1 /proc/scsi/usb-storage/$INTERNDEV 2>/dev/null)" ]; then
+         echo "$DISKDEV|scsi|$DEVTYPE|usb-storage|$FS|$ADD"
+       else
+         echo "$DISKDEV|scsi|$DEVTYPE|disk|$FS|$ADD"
+       fi
+     }
+     elif [ "$IDE" != "" ]; then
+     {
+       CDROM="`/bin/busybox cat $INTERNDEV/uevent 2>/dev/null | /bin/busybox grep "cdrom" 2>/dev/null`"
+       if [ "$CDROM" != "" ]; then
+           echo "$DISKDEV|ide|$DEVTYPE|cdrom|iso9660|$ADD"
+       else
+         echo "$DISKDEV|ide|$DEVTYPE|$FS|$ADD"
+       fi
+     }
+     else
+        if [ "`/bin/busybox echo "$DEVPATH"  | /bin/busybox grep "ram" 2>/dev/null`" != "" ]; then
+          echo "$DISKDEV|rambus|other|$DEVTYPE|$FS|$ADD"
+        else
+          echo "$DISKDEV|unknown|other|$DEVTYPE|$FS|$ADD"
+        fi
+     fi
+     return 0
+   }
+   else
+   {
+     echo "" #log "disk device ' $DISKDEV ' is not existing"
+     return 255
+   }
+   fi
+
+}
+#
+disk_type_blkid()
+{
+   debug_log "disk_type" "$*"
+   if [ "$1" = "" ]; then
+     echo ""
+     return 255
+   fi
+   if [ "$1" = "*" ]; then
+     echo ""
+     return 254
+   fi
+   set_blkid_cmd "$2"
+   local REMO DEV PARTDEV INTERNDEV DISKDEV CDROM IDE SCSI FS DEVTYPE SUBPATH UEVENT ADD
+   REMO="0"
+   DEV="x"
+   DISKDEV=$1
+   if [ -e "$DISKDEV" ]; then
+   {
+     #DEV="`basename "$1" | tr -s / | cut -c 1-3`"
+     DEV="`/bin/busybox basename "$1" | tr -s / 2>/dev/null`"
+     if [ ! -e /sys/block/$DEV/uevent ]; then
+       PARTDEV=$(echo $DEV | /bin/busybox tr -d [:digit:] 2>/dev/null)
+       if [ ! -e /sys/block/$PARTDEV/$DEV/uevent ]; then
+         echo ""
+         return 255
+       else
+         INTERNDEV=$DEV
+         DEV=$PARTDEV
+         SUBPATH="$DEV/$INTERNDEV"
+       fi
+     else
+        SUBPATH="$DEV"
+     fi
+     UEVENT="$SUBPATH/uevent"
+     SUBPATH="/sys/block/$SUBPATH"
+     ADD="`/bin/busybox cat $SUBPATH/dev 2>/dev/null`|`cat $SUBPATH/size 2>/dev/null`|`cat $SUBPATH/ro 2>/dev/null`|`cat $SUBPATH/capability 2>/dev/null`|`cat $SUBPATH/removable  2>/dev/null`"
+     DEVTYPE=`cat /sys/block/$UEVENT | grep "DEVTYPE=" | cut -f2 -d= 2>/dev/null`
+     SCSI=`cat /sys/block/$UEVENT  | grep "PHYSDEVBUS=scsi" 2>/dev/null`
+     IDE=`cat /sys/block/$UEVENT  | grep "PHYSDEVBUS=ide" 2>/dev/null`
+     # if our blkid exists and reports TYPE
+     FS=$($BLKID  | grep $DISKDEV 2>/dev/null)
+     if [ "$(echo $FS | grep $DISKDEV | grep "TYPE" 2>/dev/null)" != "" ]; then
+       #FS=$(blkid $DISKDEV)
+       if [ "$(echo $FS | grep $DISKDEV | grep "SEC_TYPE" 2>/dev/null)" != "" ]; then
+         FS=$(echo $FS | cut -f5 -d= | tr -d '"')
+       else
+         FS=$(echo $FS | cut -f4 -d= | tr -d '"')
+         if [ "$FS" = "" ]; then FS="unknown"; fi
+       fi
+     else
+       if [ "$(echo $FS | grep "TYPE")" = "" ]; then
+         FS="unrecognizable"
+       else
+         FS="unknown"
+       fi
+     fi
+     if [ "$DEV" = "$(basename $DISKDEV)" ]; then FS="unknown"; fi
+
+     if [ "$SCSI" = "PHYSDEVBUS=scsi" ]; then
+     {
+       CDROM="`cat /sys/block/$UEVENT | grep "PHYSDEVDRIVER=scsi-cdrom"`"
+       if [ "$CDROM" = "PHYSDEVDRIVER=scsi-cdrom" ]; then
+         REMO="`cat /sys/block/$DEV/removable | cut -c 1`"
+         if [ "$REMO" = "1" ]; then
+          echo "$DISKDEV|scsi|$DEVTYPE|cdrom|isoO9660|$ADD"
+         fi
+       fi
+       INTERNDEV="$(ls -1 /sys/block/$DEV/device/scsi_* 2>/dev/null  | grep "scsi_disk:" | cut -f2 -d:)"
+       if [ "/proc/scsi/usb-storage/$INTERNDEV" = "$(ls -1 /proc/scsi/usb-storage/$INTERNDEV)" ]; then
+          #FS=$(blkid  $DISKDEV | cut -f4 -d= | tr -d '"')
+         echo "$DISKDEV|scsi|$DEVTYPE|usb-storage|$FS|$ADD"
+       else
+         echo "$DISKDEV|scsi|$DEVTYPE|disk|$FS|$ADD"
+       fi
+     }
+     elif [ "$IDE" = "PHYSDEVBUS=ide" ]; then
+     {
+       CDROM="`cat /sys/block/$UEVENT | grep "PHYSDEVDRIVER=ide-cdrom"`"
+       if [ "$CDROM" = "PHYSDEVDRIVER=ide-cdrom" ]; then
+         REMO="`cat /sys/block/$DEV/removable | cut -c 1`"
+         if [ "$REMO" = "1" ]; then
+           echo "$DISKDEV|ide|$DEVTYPE|cdrom|iso9660|$ADD"
+         fi
+       else
+          #FS="`blkid  $DISKDEV | cut -f4 -d= | tr -d '"'`"
+         echo "$DISKDEV|ide|$DEVTYPE|$FS|$ADD"
+       fi
+     }
+     else
+        if [ "`cat /sys/block/$UEVENT | grep "PHYSDEV"`" = "" ]; then
+          echo "$DISKDEV|rambus|other|$DEVTYPE|$FS|$ADD"
+        else
+          echo "$DISKDEV|unknown|other|$DEVTYPE|$FS|$ADD"
+        fi
+     fi
+
+     return 0
+   }
+   else
+   {
+     echo "" #log "disk device ' $DISKDEV ' is not existing"
+     return 255
+   }
+   fi
+
+}
+#
+# the removable disk device is here a hotpluggable
+# external disk appearing as a USB/FireWire scsi device in the kernel API
+is_external()
+{
+   debug_log "is_external" "$*"
+   local REMO DEV INTERNDEV
+   REMO="1"
+   DEV="x"
+   if [ "$1" != "" ]; then
+   {
+     if [ -e $1 ]; then
+     {
+       # first cut the devicename to the disk device basename: e.g. /dev/sda1 --> sda
+       DEV="`/bin/busybox basename "$1" | /bin/busybox tr -s / 2>/dev/null | /bin/busybox tr -d [:digit:]  2>/dev/null`"
+       #     echolog " dev=$DEV "
+       # all external devices are in the scsi-bus - therefore find a disk device there
+       INTERNDEV="$(/bin/busybox readlink -f /sys/block/$DEV/device  2>/dev/null)"
+       INTERNDEV="$(/bin/busybox basename $INTERNDEV | cut -f1 -d: 2>/dev/null)"
+       #INTERNDEV="$(/bin/busybox ls -1 /sys/block/$DEV/device/scsi_* 2>/dev/null  | /bin/busybox grep "scsi_disk:" | /bin/busybox cut -f2 -d:)"
+       # external  devices(flash-memory sticks , usb-pata/sata-disks, firewire bus disks..) appear under usb-storage
+       if [ "/proc/scsi/usb-storage/$INTERNDEV" = "$(/bin/busybox ls -1 /proc/scsi/usb-storage/$INTERNDEV 2>/dev/null)" ]; then
+       {
+        if [ "$INTERNDEV" != "" ]; then
+          #echo $INTERNDEV $DEV $1
+          return 0
+        else
+          echolog "No device signature $INTERNDEV for $DEV found in SCSI-Bus /sys/block/$DEV/device "
+          if [ "$EXTERNALDEVICES" = "" ]; then
+            INTERNDEV=`disk_type "$1"`
+          else
+            INTERNDEV="$(echo $EXTERNALDEVICES | /bin/busybox grep "$1" 2>/dev/null)"
+          fi
+          if [ "$(echo $INTERNDEV | /bin/busybox grep "usb-storage" 2>/dev/null)" != "" ]; then
+            #echolog $INTERNDEV $DEV $1
+            return 0
+          else
+            #echolog $INTERNDEV $DEV $1
+            return 1
+          fi
+        fi
+       }
+       else
+        #echolog $INTERNDEV $DEV $1
+        return 1
+       fi
+     }
+     else
+       #echolog "device $1 is not existing in /dev !"
+       return 4
+     fi
+   }
+   else
+   {
+     echolog "no parameter, is_external must have exactly one parameter!"
+     return 255
+   }
+   fi
+
+}
+#
+list_external_devices()
+{
+   debug_log "list_external_devices" "$*"
+   #  this is very draft and seems to easy. listing parallel port ide devices
+   #   or firewire devices as well is not tested
+   local DEV
+   DEV="x"
+   if [ "$DEVICELIST" = "" ]; then echo ""; return 1; fi
+   for DEV in $DEVICELIST; do
+     DEV="$(echo $DEV | cut -f1 -d '|' 2>/dev/null)"
+     if  is_external $DEV; then echo $DEV; fi
+   done
+}
+#
+set_sysblock_devices()
+{
+   local BLKDEVS BLKDEVLST DEV
+   BLKDEVS="$(/bin/busybox ls -1 /sys/block/  2>/dev/null)"
+   BLOCKDEVICES=""
+   for DEV in $BLKDEVS; do
+     DEV="$(/bin/busybox basename $DEV )"
+     case $DEV in
+       sd*|hd*|sr*|scd*)
+        # make sure the system's internal ln  is terminated
+        if [ "$(/bin/busybox readlink -f /sys/block/$DEV)" != "" ]; then
+         BLOCKDEVICES="$BLOCKDEVICES $DEV"
+        fi
+         #echo ""
+         #echolog "found: Blockdevice $DEV : $(/bin/busybox readlink -f /sys/block/$DEV)"
+       ;;
+     esac
+   done
+}
+#
+BLKDEVNUMBERS=""
+set_blockdev_numbers()
+{
+   local BLKDEVS BLKDEVLST DEV PART NR D
+   set_sysblock_devices
+   BLKDEVNUMBERS=""
+   MAXSCSI=64
+   D=""
+   #SCSIPROCS=`/bin/busybox ps | /bin/busybox grep scsi_*  2>/dev/null`
+   for DEV in $BLOCKDEVICES; do
+     D="$(/bin/busybox readlink -f /sys/block/$DEV 2>/dev/null)"
+     if [ "$D" != "" ]; then
+       BLKDEVLST="$BLKDEVLST $D"
+     fi
+   done
+   NR=0
+   while [ $NR -lt $MAXSCSI ]; do
+     for D in $BLKDEVLST; do
+       if [ "$(echo $D | /bin/busybox grep "target$NR:" 2>/dev/null)" != "" ]; then
+             BLKDEVNUMBERS="$BLKDEVNUMBERS $NR"
+       fi
+     done
+    NR=$(( $NR + 1 ))
+   done
+   BLKDEVNUMBERS=$(echo $BLKDEVNUMBERS | /bin/busybox sort 2>/dev/null)
+
+}
+#
+await_scan_universal()
+{
+   debug_log "await_scan" "$*"
+   local I K LIMIT SCAN NR DEV SCSI SDEV HDEV PS FACTOR DEFAULT
+   LIMIT=$1
+   DEFAULT=100
+   if [ "$1" = "" ] ; then  LIMIT=$DEFAULT; fi
+   if [ $LIMIT -gt $DEFAULT ]; then LIMIT=$DEFAULT; fi
+   FACTOR=$2
+   if [ "$2" != "" ]; then
+     LIMIT=$(( $LIMIT * $FACTOR ))
+   else
+     FACTOR=1
+   fi
+   if [ $FACTOR -eq 0 ]; then FACTOR=1; fi
+   I=0
+   K=0
+   L=0
+   NR=""
+   DEV=""
+   #echolog "Looking for sci_scan process......."
+   while  [ $I -le  $LIMIT ]; do
+     PS=`/bin/busybox ps`
+     SCAN="$(echo "$PS"  | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox tr -d "[]" 2>/dev/null)"
+     if [ "$SCAN" = "" -a "$NOUSB" = "" ]; then
+        SCAN="$(echo "$PS"  | /bin/busybox grep "usb-stor-scan" 2>/dev/null | /bin/busybox tr -d "[]" 2>/dev/null)"
+     fi
+     for DEV in $SCAN; do
+       case $DEV in
+         scsi_scan_*)
+           SDEV="$(echo $DEV | /bin/busybox tr -d "_" 2>/dev/null | /bin/busybox tr -d [:alpha:] 2>/dev/null )"
+           echolog "internal device : $SDEV"
+         ;;
+         usb-stor-scan)
+           HDEV="$DEV"
+           echolog "scanning process : $HDEV"
+         ;;
+       esac
+     done
+     if [ "$SCAN" != "" ]; then
+       while [ $K -lt $LIMIT ]; do
+         PS=`/bin/busybox ps`
+         SCSI="$(echo "$PS"  | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox tr -d "[]" 2>/dev/null)"
+         if [ "$SCSI" = ""  -a "$NOUSB" = "" ]; then
+            SCSI="$(echo "$PS"  | /bin/busybox grep "usb-stor-scan" 2>/dev/null | /bin/busybox tr -d "[]" 2>/dev/null)"
+         fi
+         if [ "$SCSI" = "" ]; then break; fi
+         K=$(( $K + 1 ))
+       done
+       #echo ""
+       #echolog "$"
+       echolog "scan process(es) did run."
+       echolog "device(s) settled... "
+       L=$(( $L + 1 ))
+       if [ $L -ge $FACTOR ]; then
+         #/bin/busybox sleep 1
+         return 0
+         break
+       fi
+     fi
+     I=$(( $I + 1 ))
+   done
+   return 1
+}
+#
+await_scan()
+{
+   debug_log "await_scan" "$*"
+   local I K LIMIT SCAN NR DEV SCSI SDEV HDEV PS DEFAULT FACTOR
+   DEFAULT=250
+   LIMIT=""
+   FACTOR=$(( $CPUFREQ / 1000 ))
+   if [ "$FACTOR" = "" ]; then FACTOR=1; fi
+   if [ $FACTOR -ne 0 ]; then
+     LIMIT=$(( $DEFAULT * $FACTOR ))
+   fi
+   if [ "$LIMIT" = "" ]; then
+     LIMIT=$DEFAULT
+   fi
+   PS=`/bin/busybox ps`
+   SCAN="$(echo "$PS"  | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox tr -d "[]" 2>/dev/null)"
+   if [ "$SCAN" = "" -a "$NOUSB" = "" ]; then
+      SCAN="$(echo "$PS"  | /bin/busybox grep "usb-stor-scan" 2>/dev/null | /bin/busybox tr -d "[]" 2>/dev/null)"
+   fi
+   DEV=""
+   for DEV in $SCAN; do
+     case $DEV in
+       scsi_scan_*)
+         SDEV="$(echo $DEV | /bin/busybox tr -d "_" 2>/dev/null | /bin/busybox tr -d [:alpha:] 2>/dev/null )"
+         debug_log "internal device : $SDEV"
+       ;;
+       usb-stor-scan)
+         HDEV="$DEV"
+         debug_log "scanning process : $HDEV"
+       ;;
+     esac
+   done
+   K=0
+   if [ "$SCAN" != "" ]; then
+     while [ $K -lt $LIMIT ]; do
+       PS=`/bin/busybox ps`
+       SCSI="$(echo "$PS"  | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox tr -d "[]" 2>/dev/null)"
+       if [ "$SCSI" = ""  -a "$NOUSB" = "" ]; then
+          SCSI="$(echo "$PS"  | /bin/busybox grep "usb-stor-scan" 2>/dev/null | /bin/busybox tr -d "[]" 2>/dev/null)"
+       fi
+       if [ "$SCSI" = "" ]; then
+         break
+       else
+          K=$(( $K + 1 ))
+       fi
+     done
+     debug_log "scan process did run."
+     debug_log "device settled... "
+     return 0
+   fi
+   return 1
+}
+#
+wait_for_scsidrives_mod()
+{
+   debug_log "wait_for_scsidrives" "$*"
+   local DEV DEVNUMBER i time tdefault TEMPBLKID PROCS SCAN NRPROCS NRSCAN SCSISCAN D SCSI NRSCSI PS
+   limit=$1
+   tdefault=$2
+   # assign important variables
+   if [ "$tdefault" = "" ]; then tdefault=$MAXCYCLES; fi
+   if [ "$limit" = "" ];  then limit=$tdefault; fi
+   if [ "$limit" = "0" ]; then limit=$tdefault; fi
+   if [ $limit -gt $MAXCYCLES ];  then limit=$MAXCYCLES; fi
+   if [ "$CPUFREQ" = "" ]; then set_cpuvars; fi
+   /bin/busybox mdev -s  2>/dev/null
+   /bin/busybox sync  2>/dev/null
+   PROCS=`/bin/busybox ps`
+   NRUSB=`echo  "$PROCS" | /bin/busybox grep "usb-storage" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+   SCSI=""
+
+  #
+   if [ "$(echo $PROCS  | /bin/busybox grep "scsi_" 2>/dev/null )" != "" -o $NRUSB -gt 0  ]; then
+   {
+      #echolog "initial number of scsi processes: $(echo "$PROCS" | /bin/busybox grep "scsi" 2>/dev/null | /bin/busybox wc -l 2>/dev/null) "
+      set_sysblock_devices
+      set_blockdev_numbers
+      TMBLKDEVS=$BLOCKDEVICES
+      i=""
+      SCSI=0
+      for i in $BLKDEVNUMBERS; do
+         echo -n ".init."
+         #await_scan
+         SCSI=$(( $SCSI + 1 ))
+      done
+
+      echolog  " Found:  $SCSI scsi block devices initially"
+      PROCS=`/bin/busybox ps`
+      NRSCAN=`echo "$PROCS" | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRSCSI=`echo  "$PROCS" | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRUSB=`echo  "$PROCS" | /bin/busybox grep "usb-storage" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      echolog "initial number of usb-storage processes : $NRUSB"
+      echolog "initial number of scsi device processes : $NRSCSI"
+      #if [ $NRSCAN -eq 0 ]; then SCSI=$NRSCSI; fi
+      SCAN=""
+      PS=0
+      #SCSI=0
+      TEMPBLKID=""
+      i=1
+     # now loop on the big awaiter loop
+     time=1
+     echo -n "$time:."
+     while [ $time -le $limit ]; do
+     {
+      echo -n ".if."
+      DEV=0
+
+      if [ $NRSCAN -gt 0 -o $NRSCSI -gt $SCSI -o $NRUSB -gt 0  ]; then
+        echolog " waiting for scsi scan process(es) ...."
+        # the small awaiter loop
+        while [ $SCSI -lt $NRSCSI -o $NRSCAN -gt 0 ]; do
+         echo -n ".scan."
+         await_scan
+         SCSI=$(( $SCSI + 1 ))
+         #echo ""
+         echolog " scanned for $SCSI of $NRSCSI scsi drives...."
+        done
+      fi
+
+      echo -n ".assign."
+      PROCS=`/bin/busybox ps`
+      SCAN="` echo $PROCS | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox tr -d "[]" | /bin/busybox sort  2>/dev/null`"
+      D=""
+      DEV=""
+      DEVNUMBER=""
+      #echolog $SCAN
+      for D in $SCAN; do
+         case $D in
+           scsi_*)
+             DEVNUMBER=$(echo $D | /bin/busybox tr -d [:alpha:] | /bin/busybox tr -d "_" )
+           ;;
+         esac
+      done
+      #echolog "last assigned device number : $DEVNUMBER"
+      set_sysblock_devices
+      D=""
+      for D in $BLOCKDEVICES; do
+        D="$(/bin/busybox readlink -f /sys/block/$D  2>/dev/null)"
+        PART=$(echo $D | /bin/busybox cut -f2 -d '/'  2>/dev/null)
+        i=3
+        while [ "$PART" != "$(/bin/busybox basename $D)" ]; do
+          PART="$(echo $D | /bin/busybox cut -f$i -d '/'  2>/dev/null)"
+          case $PART in
+            host*)
+              DEVNUMBER=$(echo $PART | /bin/busybox tr -d [:alpha:] )
+              DEV=$(/bin/busybox basename $D 2>/dev/null)
+              break
+            ;;
+          esac
+          i=$(( $i + 1 ))
+        done
+      done
+      #fi
+      echolog "last assigned device name : $DEV with number $DEVNUMBER"
+      #echo ""
+      PROCS=`/bin/busybox ps`
+      NRSCAN=`echo    "$PROCS" | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRSCSI=`echo    "$PROCS" | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      #NRPROCS=`echo  "$PROCS" | /bin/busybox wc -l 2>/dev/null`
+      NRUSB=`echo  "$PROCS" | /bin/busybox grep "usb-storage" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+
+      debug_log "current number of scsi processes : $NRSCSI"
+
+      echo -n ".refresh."
+      /bin/busybox mdev -s  2>/dev/null
+      /bin/busybox sync     2>/dev/null
+
+      set_sysblock_devices
+      echo -n ".check."
+      if [ "$BLOCKDEVICES" != "$TMPBLKDEVS" -o $NRSCSI -gt $SCSI ]; then
+        i=1
+        # busybox blkid command really refreshes the blockdevice access
+        /bin/busybox rm -f /etc/blkid.tab 2>/dev/null
+        TEMPBLKID=`/bin/busybox blkid `
+        while [ "$TMPBLKDEVS" != "$BLOCKDEVICES" ]; do
+          PROCS=`/bin/busybox ps`
+          SCAN="`echo "$PROCS" | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox tr -d "[]" | /bin/busybox sort  2>/dev/null `"
+          PS=$(echo "$SCAN" | /bin/busybox wc -l 2>/dev/null)
+
+          if [ "$DEV" = "" ]; then
+             PS=0
+             D=""
+             for D in $SCAN; do
+               case $D in
+                 scsi_*)
+                   DEV=$(echo $D | /bin/busybox tr -d [:alpha:] | /bin/busybox tr -d "_" )
+                   PS=$(( $PS + 1 ))
+                 ;;
+               esac
+             done
+          fi
+          if  [ ! -d /sys/block/$DEV -a $DEV -gt 0 ]; then
+            D=""
+            for D in $BLOCKDEVICES; do
+              D="$(/bin/busybox readlink -f /sys/block/$D  2>/dev/null)"
+              if [ "$(echo $D | /bin/busybox grep "target$DEV:" 2>/dev/null)" != "" ]; then
+                echo ""
+                DEV=$(/bin/busybox basename $D 2>/dev/null)
+                echolog "second check for last device : $DEV"
+              fi
+            done
+          #else
+          fi
+          # is device in blkid visible, then it is brought up and accessible
+          if [ "$(echo $TEMPBLKID | /bin/busybox grep "$DEV" 2>/dev/null)" != "" -o $PS -eq $SCSI ]; then
+            TMPBLKDEVS=$BLOCKDEVICES
+          else
+            /bin/busybox rm -f /etc/blkid.tab  2>/dev/null
+            TEMPBLKID=`/bin/busybox blkid `
+          fi
+          echo -n ".refresh."
+          /bin/busybox mdev -s  2>/dev/null
+          /bin/busybox sync     2>/dev/null
+          echo -n ".wait( $i sec )."
+          /bin/busybox sleep 1  2>/dev/null
+          echo -n ".verify."
+          set_sysblock_devices
+          i=$(( $i + 1 ))
+          if [ $i -ge $limit ]; then break; fi
+        done
+      # brought nothing new up
+      else
+         break
+      fi
+      if [ $NRSCSI -eq $SCSI -o $NRSCAN -eq 0 ]; then
+        TMPBLKDEVS=$BLOCKDEVICES
+      fi
+      set_blockdev_numbers
+      time=$(( $time + 1 ))
+      echo ""
+      echo -n "$time:."
+     }
+     done
+
+     echo ""
+     echolog "final number of scsi devices : $NRSCSI"
+     echolog "scsi drives appear all up and accessible!"
+     return 0
+   }
+   fi
+   echolog " no scsi drives found..."
+   return 1
+}
+#
+wait_for_scsidrives()
+{
+   debug_log "wait_for_scsidrives" "$*"
+   local DEV i time tdefault TEMPBLKID PROCS SCAN NRPROCS NRSCAN SCSISCAN D SCSI NRSCSI PS
+   limit=$1
+   tdefault=$2
+   # assign important variables
+   if [ "$tdefault" = "" ]; then tdefault=$MAXCYCLES; fi
+   if [ "$limit" = "" ];  then limit=$tdefault; fi
+   if [ "$limit" = "0" ]; then limit=$tdefault; fi
+   if [ $limit -gt $MAXCYCLES ];  then limit=$MAXCYCLES; fi
+   if [ "$CPUFREQ" = "" ]; then set_cpuvars; fi
+   /bin/busybox mdev -s  2>/dev/null
+   /bin/busybox sync  2>/dev/null
+   PROCS=`/bin/busybox ps`
+   SCSI=""
+  #
+   if [ "$(echo $PROCS  | /bin/busybox grep "scsi_" 2>/dev/null )" != ""  ]; then
+   {
+      echolog "initial number of scsi processes: $(echo "$PROCS" | /bin/busybox grep "scsi" 2>/dev/null | /bin/busybox wc -l 2>/dev/null) "
+      set_sysblock_devices
+      set_blockdev_numbers
+      TMBLKDEVS=$BLOCKDEVICES
+      i=""
+      SCSI=0
+      for i in $BLKDEVNUMBERS; do
+         echo -n ".scan."
+         await_scan
+         SCSI=$(( $SCSI + 1 ))
+         echolog  "$SCSI. scan for scsi device nr. $i ....."
+      done
+      PROCS=`/bin/busybox ps`
+      NRSCAN=`echo "$PROCS" | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRSCSI=`echo  "$PROCS" | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      #NRPROCS=`echo  "$PROCS" | /bin/busybox wc -l 2>/dev/null`
+      #echolog "initial number of usb-storage processes : $NRUSB"
+      #echolog "initial number of scsi device processes : $NRSCSI"
+      #if [ $NRSCAN -eq 0 ]; then SCSI=$NRSCSI; fi
+      SCAN=""
+      PS=0
+      #SCSI=0
+      TEMPBLKID=""
+      i=1
+     # now loop on the big awaiter loop
+     time=1
+     echo -n "$time:."
+     while [ $time -le $limit ]; do
+     {
+      echo -n ".ifs."
+      DEV=0
+
+      if [ $NRSCAN -gt 0 -o $NRSCSI -gt $SCSI ]; then
+        echolog " waiting for scsi scan process(es) ...."
+        while [ $SCSI -lt $NRSCSI -o $NRSCAN -gt 0 ]; do
+         echo -n ".scan."
+         await_scan
+
+          SCSI=$(( $SCSI + 1 ))
+         #echo ""
+         echolog " scanned for $SCSI of $NRSCSI scsi drives...."
+        done
+      fi
+
+      echo -n ".assign."
+      PROCS=`/bin/busybox ps`
+      SCAN="` echo $PROCS | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox tr -d "[]" | /bin/busybox sort  2>/dev/null`"
+      D=""
+      #echolog $SCAN
+      for D in $SCAN; do
+         case $D in
+           scsi_*)
+             DEV=$(echo $D | /bin/busybox tr -d [:alpha:] | /bin/busybox tr -d "_" )
+           ;;
+         esac
+      done
+      echolog "last assigned device number : $DEV"
+      set_sysblock_devices
+      #set_blockdev_numbers
+      D=""
+      for D in $BLOCKDEVICES; do
+        D="$(/bin/busybox readlink -f /sys/block/$D  2>/dev/null)"
+        if [ "$(echo $D | /bin/busybox grep "target$DEV:" 2>/dev/null)" != "" ]; then
+          #echo ""
+          DEV=$(/bin/busybox basename $D 2>/dev/null)
+          #echolog "checked last for device : $DEV"
+        fi
+      done
+      echolog "last assigned device name : $DEV"
+      #echo ""
+      PROCS=`/bin/busybox ps`
+      NRSCAN=`echo    "$PROCS" | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRSCSI=`echo    "$PROCS" | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      #NRPROCS=`echo   "$PROCS" | /bin/busybox wc -l 2>/dev/null`
+
+      debug_log "current number of scsi processes : $NRSCSI"
+
+      echo -n ".refresh."
+      /bin/busybox mdev -s  2>/dev/null
+      /bin/busybox sync     2>/dev/null
+
+      set_sysblock_devices
+      #set_blockdev_numbers
+      echo -n ".check."
+      if [ "$BLOCKDEVICES" != "$TMPBLKDEVS" -o $NRSCSI -gt $SCSI ]; then
+        i=1
+        # busybox blkid command really refreshes the blockdevice access
+        TEMPBLKID=`/bin/busybox blkid `
+        while [ "$TMPBLKDEVS" != "$BLOCKDEVICES" ]; do
+
+          if [ "$DEV" = "" ]; then
+             PROCS=`/bin/busybox ps`
+             SCAN="` echo $PROCS | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox tr -d "[]" | /bin/busybox sort  2>/dev/null`"
+             D=""
+             for D in $SCAN; do
+               case $D in
+                 scsi_*)
+                   DEV=$(echo $D | /bin/busybox tr -d [:alpha:] | /bin/busybox tr -d "_" )
+                 ;;
+               esac
+             done
+          fi
+          if [ "$(echo $TEMPBLKID | /bin/busybox grep "$DEV" 2>/dev/null)" != "" ]; then
+            TMPBLKDEVS=$BLOCKDEVICES
+          else
+            TEMPBLKID=`/bin/busybox blkid `
+          fi
+          echo -n ".refresh."
+          /bin/busybox mdev -s  2>/dev/null
+          /bin/busybox sync     2>/dev/null
+          echo -n ".wait( $i sec )."
+          /bin/busybox sleep 1  2>/dev/null
+          echo -n ".verify."
+          set_sysblock_devices
+          i=$(( $i + 1 ))
+          if [ $i -ge $limit ]; then break; fi
+        done
+        D=""
+        for D in $BLOCKDEVICES; do
+          D="$(/bin/busybox readlink -f /sys/block/$D  2>/dev/null)"
+          if [ "$(echo $D | /bin/busybox grep "target$DEV:" 2>/dev/null)" != "" ]; then
+            echo ""
+            DEV=$(/bin/busybox basename $D 2>/dev/null)
+            echolog "checked last for device : $DEV"
+          fi
+        done
+      # brought nothing new up
+      else
+         break
+      fi
+      if [ $NRSCSI -eq $SCSI -o $NRSCAN -eq 0 ]; then
+        TMPBLKDEVS=$BLOCKDEVICES
+      fi
+      time=$(( $time + 1 ))
+      echo ""
+      echo -n "$time:."
+     }
+     done
+
+     echo ""
+     echolog "final number of scsi devices : $NRSCSI"
+     echolog "scsi drives appear all up and accessible!"
+     return 0
+   }
+   fi
+   echolog " no scsi drives found..."
+   return 1
+}
+#
+wait_for_usbdrives()
+{
+   debug_log "wait_for_usbdrives" "$*"
+   local DEV i time tdefault TEMPBLKID PROCS USB NRUSB USBSCAN NRUSBSCAN SCAN NRPROCS NRSCAN D SCSI NRSCSI PS
+   limit=$1
+   tdefault=$2
+   # assign important variables
+   if [ "$tdefault" = "" ]; then tdefault=$MAXCYCLES; fi
+   if [ "$limit" = "" ];  then limit=$tdefault; fi
+   if [ "$limit" = "0" ]; then limit=$tdefault; fi
+   if [ $limit -gt $MAXCYCLES ];  then limit=$MAXCYCLES; fi
+   if [ "$CPUFREQ" = "" ]; then set_cpuvars; fi
+   /bin/busybox mdev -s  2>/dev/null
+   /bin/busybox sync  2>/dev/null
+   # some fast systems need a sleep to sync for others it won't hurt
+   /bin/busybox sleep 1  2>/dev/null
+   PROCS=`/bin/busybox ps`
+
+  # bringing up usbdrives makes sense only if process usb-storage is running
+   if [ "$(echo $PROCS  | /bin/busybox grep "usb-storage" 2>/dev/null )" != ""  ]; then
+   {
+      NRSCAN=`echo "$PROCS" | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRSCSI=`echo  "$PROCS" | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      #NRPROCS=`echo  "$PROCS" | /bin/busybox wc -l 2>/dev/null`
+      NRUSB=`echo "$PROCS" | /bin/busybox grep "usb-storage" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRUSBSCAN=`echo "$PROCS" | /bin/busybox grep "usb-stor-scan" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      #echolog "initial number of usb-storage processes : $NRUSB"
+      #echolog "initial number of scsi device processes : $NRSCSI"
+      USB=0
+      if [ $NRUSBSCAN -eq 0 ]; then USB=$NRUSB; fi
+      SCAN=$NRSCAN
+      SCSI=$NRSCSI
+      PS=0
+      TEMPBLKID=""
+      set_sysblock_devices
+      TMBLKDEVS=$BLOCKDEVICES
+
+     # now loop on the big awaiter loop
+     time=1
+     echo -n "$time:."
+     while [ $time -le $limit ]; do
+     {
+      echo -n ".ifs."
+      DEV=0
+
+      if [ $NRUSBSCAN -gt 0 ]; then
+        echolog " usb scan process is running ...."
+        while [ $USB -lt $NRUSB ]; do
+         echo -n ".scan."
+         await_scan
+         USB=$(( $USB + 1 ))
+         #echo ""
+         echolog " scanned for $USB of $NRUSB  USB drives...."
+        done
+      fi
+      if [ $NRSCSI -gt $SCSI -o $NRSCAN -gt 0 ]; then
+         echo -n ".scan."
+         await_scan
+         #echo ""
+         echolog " found scsi device...."
+         # whether to rescan or not
+         # scsi_* processes can jump to more than one
+         # without really indicating more than one devices
+         SCSI=$(( $SCSI + 1 ))
+      elif [ $NRUSB -gt $USB ]; then
+         echo -n ".scan."
+         await_scan
+         USB=$(( $USB + 1 ))
+         #echo ""
+         echolog " found usb device...."
+      fi
+
+      echo -n ".assign."
+      SCAN=`/bin/busybox ps  | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox tr -d "[]" | /bin/busybox sort  2>/dev/null`
+      D=""
+      for D in $SCAN; do
+         case $D in
+           scsi_*h_*)
+             DEV=$(echo $D | /bin/busybox tr -d [:alpha:] | /bin/busybox tr -d "_" )
+           ;;
+         esac
+      done
+      debug_log "last assigned device number : $DEV"
+      set_sysblock_devices
+      D=""
+      for D in $BLOCKDEVICES; do
+        D="$(/bin/busybox readlink -f /sys/block/$D  2>/dev/null)"
+        if [ "$(echo $D | /bin/busybox grep "target$DEV:" 2>/dev/null)" != "" ]; then
+          #echo ""
+          DEV=$(/bin/busybox basename $D 2>/dev/null)
+          #echolog "checked last for device : $DEV"
+        fi
+      done
+      debug_log "last assigned device name : $DEV"
+      #echo ""
+      PROCS=`/bin/busybox ps`
+      NRSCAN=`echo    "$PROCS" | /bin/busybox grep "scsi_scan_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRSCSI=`echo    "$PROCS" | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      #NRPROCS=`echo   "$PROCS" | /bin/busybox wc -l 2>/dev/null`
+      NRUSB=`echo     "$PROCS" | /bin/busybox grep "usb-storage" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+      NRUSBSCAN=`echo "$PROCS" | /bin/busybox grep "usb-stor-scan" 2>/dev/null | /bin/busybox wc -l 2>/dev/null`
+
+      debug_log "current number of usb-storage processes : $NRUSB"
+
+      echo -n ".refresh."
+      /bin/busybox mdev -s  2>/dev/null
+      /bin/busybox sync     2>/dev/null
+
+      set_sysblock_devices
+      echo -n ".check."
+      if [ "$BLOCKDEVICES" != "$TMPBLKDEVS" -o $NRSCSI -gt $SCSI ]; then
+        i=1
+        # busybox blkid command really refreshes the blockdevice access
+        TEMPBLKID=`/bin/busybox blkid `
+        while [ "$TMPBLKDEVS" != "$BLOCKDEVICES" ]; do
+
+          if [ "$DEV" = "" ]; then
+             SCAN=`/bin/busybox ps | /bin/busybox grep "scsi_" 2>/dev/null | /bin/busybox tr -d "[]" | /bin/busybox sort  2>/dev/null`
+             D=""
+             for D in $SCAN; do
+               case $D in
+                 scsi_*h_*)
+                   DEV=$(echo $D | /bin/busybox tr -d [:alpha:] | /bin/busybox tr -d "_" )
+                 ;;
+               esac
+             done
+          fi
+          if [ "$(echo $TEMPBLKID | /bin/busybox grep "$DEV" 2>/dev/null)" != "" ]; then
+            TMPBLKDEVS=$BLOCKDEVICES
+          else
+            TEMPBLKID=`/bin/busybox blkid `
+          fi
+          echo -n ".refresh."
+          /bin/busybox mdev -s  2>/dev/null
+          /bin/busybox sync     2>/dev/null
+          echo -n ".wait( $i sec )."
+          /bin/busybox sleep 1  2>/dev/null
+          echo -n ".verify."
+          set_sysblock_devices
+          i=$(( $i + 1 ))
+          if [ $i -ge $limit ]; then break; fi
+        done
+        D=""
+        for D in $BLOCKDEVICES; do
+          D="$(/bin/busybox readlink -f /sys/block/$D  2>/dev/null)"
+          if [ "$(echo $D | /bin/busybox grep "target$DEV:" 2>/dev/null)" != "" ]; then
+            echo ""
+            DEV=$(/bin/busybox basename $D 2>/dev/null)
+            echolog "checked last for device : $DEV"
+          fi
+        done
+      # brought nothing new up
+      else
+         break
+      fi
+      if [ $NRSCSI -eq $SCSI -a $NRUSB -eq $USB ]; then
+        TMPBLKDEVS=$BLOCKDEVICES
+      fi
+      time=$(( $time + 1 ))
+      echo ""
+      echo -n "$time:."
+     }
+     done
+
+     echo ""
+     #echolog "final number of usb-storage processes : $NRUSB"
+     echolog "usb drives appear all up and accessible!"
+     return 0
+   }
+   fi
+   echolog " no usb drives found..."
+   return 1
+}
+#
+wait_for_pcmciadrives()
+{
+   local NRPCMCIA PCMCIADEV
+   #LSPCI=`/bin/busybox lspci -mk`
+   LSPCI=`/bin/busybox ps`
+   if [ "$(echo $LSPCI | /bin/busybox grep pcmcia )" != "" ]; then
+     wait_for_scsidrives_mod "$1"
+   fi
+   return 0
+}
+#
+wait_for_external()
+{
+  # these only if usb-storage is compiled into kernel
+#  if [ -d /lib/modules/$KERNVER/kernel ] ; then
+   if [ "$NOUSB" = "" ]; then
+    wait_for_scsidrives_mod  "$1"
+   fi
+
+#  else
+#   if [ "$NOUSB" = "" ]; then
+#    wait_for_usbdrives "$1"
+    # wait_for_scsidrives "$1"
+#   fi
+#  fi
+   if [ "$NOPCMCIA" = "" ]; then
+     wait_for_pcmciadrives "$1"
+   fi
+
+   set_system_variables
+   echolog " brought up : $(echo `list_external_devices` ) "
+}
+#
+wait_for_external_old()
+{
+   debug_log "wait_for_external" "$*"
+   local DEV i time TEMPBLKID
+   k=0
+   time=$1
+   if [ "$time" = "" ];  then time=4; fi
+   if [ "$time" = "0" ]; then time=4; fi
+   if [ $time -lt 10 ];  then time=4; fi
+   if [ $time -gt $MAXCYCLES ];  then time=$MAXCYCLES; fi
+   /bin/busybox mdev -s  2>/dev/null
+   /bin/busybox sync  2>/dev/null
+   BLKIDRESULT=`/bin/busybox blkid`
+   if [ "$(echo `/bin/busybox ps -A` | /bin/busybox grep "[usb-storage]" 2>/dev/null )" != ""  ]; then
+    if [ "$(/bin/busybox dmesg | /bin/busybox grep "usb-storage: device scan complete" )" = "" ]; then
+     echo -n "$time"
+     while [ $time -gt 0 ]; do
+      /bin/busybox sleep 2  2>/dev/null
+      echo -n "."
+      time=$(/bin/busybox expr $time '-' 1 2>/dev/null)
+      /bin/busybox mdev -s  2>/dev/null
+      /bin/busybox sync     2>/dev/null
+      echo -n "."
+      if [ "$(echo `/bin/busybox ps -A` | /bin/busybox grep "[usb-storage]" 2>/dev/null )" != "" -a "$(/bin/busybox dmesg | /bin/busybox grep "usb-storage: device scan complete" )" != "" ]; then
+         TEMPBLKID=`/bin/busybox blkid`
+         if [ "$BLKIDRESULT" != "$TEMPBLKID" ]; then break; fi
+      fi
+      echo -n "$time"
+     done
+     echo " "
+    fi #set_system_variables
+   fi
+   if [ "$(echo `/bin/busybox ps -A` | /bin/busybox grep "[usb-storage]" 2>/dev/null )" != "" ]; then
+
+      if [ "$(/bin/busybox dmesg | /bin/busybox grep "usb-storage: waiting for device to settle before scanning" )" != "" -a "$(/bin/busybox dmesg | /bin/busybox grep "usb-storage: device scan complete" )" = "" ]; then
+       echolog " waiting some more time..."
+		   if [ "$time" = "" ];  then time=4; fi
+		   if [ "$time" = "0" ]; then time=4; fi
+		   if [ $time -lt 10 ];  then time=4; fi
+		   if [ $time -gt $MAXCYCLES ];  then time=$MAXCYCLES; fi
+
+        BLKIDRESULT=$TEMPBLKID
+         echo -n "$time"
+         while [ $time -gt 0 ]; do
+            /bin/busybox sleep 2  2>/dev/null
+            #echo -n "`/bin/busybox expr 6 '-' $time` "
+            echo -n "."
+            time=$(/bin/busybox expr $time '-' 1 2>/dev/null)
+            /bin/busybox mdev -s  2>/dev/null
+            /bin/busybox sync     2>/dev/null
+            echo -n "."
+            if [ "$(echo `/bin/busybox ps -A` | /bin/busybox grep "[usb-storage]" 2>/dev/null )" != "" -a "$(/bin/busybox dmesg | /bin/busybox grep "usb-storage: device scan complete" )" != "" ]; then
+               TEMPBLKID=`/bin/busybox blkid`
+               if [ "$BLKIDRESULT" != "$TEMPBLKID" ]; then break; fi
+            fi
+            echo -n "$time"
+         done
+         echo " "
+      else
+       echolog " giving up!"
+       BLKIDRESULT=`/bin/busybox blkid`
+      fi
+
+      set_system_variables
+      echolog " all externals seem to be brought up and running..."
+      echolog " brought up : $(echo `list_external_devices`) "
+      return 0
+   fi
+   set_system_variables
+   EXTERNALDEVICES=$(echo `list_external_devices`)
+   if [ "$EXTERNALDEVICES" != "" ]; then
+     echolog " all externals seem to be brought up and running..."
+     BLKIDRESULT=`/bin/busybox blkid  2>/dev/null`
+     TEMPBLKID=`/bin/busybox blkid  2>/dev/null`
+     for dev in $EXTERNALDEVICES; do
+       if [ "$(echo $BLKIDRESULT | /bin/busybox grep "$dev" 2>/dev/null)" = "" ]; then
+        echolog " not all externals found for now...doing the torture effort..."
+        for i in 0 1 2 3 4 5 6 7 8 9; do
+         echo -n "$i"
+         /bin/busybox mdev -s   2>/dev/null
+         /bin/busybox sync      2>/dev/null
+         echo -n "."
+         /bin/busybox sleep 1   2>/dev/null
+         TEMPBLKID=`/bin/busybox blkid 2>/dev/null`
+         echo -n "."
+         if [ "$BLKIDRESULT" != "$TEMPBLKID"  ]; then
+          echo " "
+          echolog " all externals seem to be brought up and running..."
+          return 0
+         fi
+        done
+        echo " "
+        echolog " no or not all externals found for now..."
+        return 1
+       fi
+     done
+   fi
+   echolog " no externals found..."
+   return 1
+
+}
+#
+list_usbdisk_devices()
+{
+   debug_log "list_usbdisk_devices" "$*"
+# TODO:  follow the device numbers in /proc/ and /sys/ and determine exactly
+   # the up devices for usb bus
+   #  this is very draft seems to easy and listing parallel port ide devices
+   #   or firewire devices as well
+   local DEV i
+   DEV="x"
+   i=0
+   if [ "$NOUSB" != "" ] ; then echo "" ; return 1; fi
+   for DEV in $DEVICELIST; do
+     if [ "$(echo $DEV | /bin/busybox  grep "usb-storage")" ]; then
+        echo $DEV | /bin/busybox cut -f1 -d '|' 2>/dev/null
+     fi
+   done
+}
+#
+# List all partitions marked as Linux Swap
+#
+list_swap_devices()
+{
+   debug_log "list_swap_devices" "$*"
+   if [ "$NOSWAP" != "" ]; then return 1; fi
+   set_blkid_cmd ""
+   if [ "`$BLKID | /bin/busybox grep "TYPE"`" != "" ]; then
+     $BLKID -t TYPE="swap" -o device
+   else
+      set_blkid_cmd "/$UNION"
+      if [ "`$BLKID | /bin/busybox grep "TYPE"`" != "" ]; then
+         $BLKID -t TYPE="swap" -o device
+      else
+         echo "/dev/noswapfindable"
+      fi
+   fi
+}
+#
+generate_device_list()
+{
+  for DEVICE in $BLOCKDEVICES; do
+    # display complete device system description
+    echo "`disk_type "/dev/$DEVICE"`"
+    # if there are partitions add them with complete description
+    if [ "$(echo $PARTITIONLIST | /bin/busybox grep "$DEVICE" )" != "" ]; then
+     for DEV in $PARTITIONLIST; do
+      if [ "$(echo $DEV | /bin/busybox grep "$DEVICE")" != "" ]; then
+       echo "`disk_type "/dev/$DEV"`"
+      fi
+     done
+    fi
+  done
+}
+#
+set_blockdevice_list()
+{
+  local BLOCKDEVLIST DEV  REALPATH
+  BLOCKDEVLIST=`/bin/busybox ls -1 /sys/block 2>/dev/null`
+  BLOCKDEVLIST=$(echo $BLOCKDEVLIST)
+  BLOCKDEVICES=""
+  for DEV in $BLOCKDEVLIST; do
+    var=$(echo $DEV | /bin/busybox tr -d [:digit:] 2>/dev/null)
+    if [ "$(/bin/busybox ls -1 /dev/$var 2>/dev/null)" != "" ]; then
+     REALPATH="`/bin/busybox readlink -f /sys/block/$var 2>/dev/null`"
+     if [ "$REALPATH" != "" -a "$(/bin/busybox ls -1 $REALPATH 2>/dev/null)" != "" ]; then
+       BLOCKDEVICES="$(echo $BLOCKDEVICES $var)"
+     fi
+    fi
+  done
+  #echo $BLOCKDEVICES
+}
+#
+set_partition_list()
+{
+  local var DEV
+  PARTITIONLIST=""
+  for DEV in $BLOCKDEVICES; do
+     var="`/bin/busybox readlink -f /sys/block/$DEV 2>/dev/null`"
+     if [ -d $var ]; then
+     # solaris or sgios or other unix derivatives may have up to 6 or 12 partitions...
+       for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+         if [ -e  /dev/$DEV$i ]; then
+          PARTITIONLIST="$(echo $PARTITIONLIST $DEV$i)"
+         fi
+       done
+     fi
+  done
+
+}
+#
+check_for_new_devices()
+{
+
+  local  SYSBLKDEVS  SCSIBLKDEVS INTERNDEVS BLKDEVS NEWBLKDEVS NEWINTERNDEVS var dev line RC
+  # if one of essential variables is empty suggest new device to check
+  if [ "$DEVICELIST" = "" ];    then return 0; fi
+  if [ "$BLOCKDEVICES" = "" ];  then return 0; fi
+  # are there new /sys/block/*  entries?
+  RC=1
+  SYSBLKDEVS=`/bin/busybox ls -1 /sys/block 2>/dev/null`
+  BLKDEVS=""
+  line=""
+  for line in $SYSBLKDEVS; do
+    dev=$line
+    if [ "$(echo $dev | /bin/busybox tr -d [:digit:] 2>/dev/null)" != "ram" -o "$(echo $dev | /bin/busybox tr -d [:digit:] 2>/dev/null)" != "loop" ]; then
+      BLKDEVS=$(echo $BLKDEVS $dev)
+    fi
+  done
+  line=""
+  NEWBLKDEVS=""
+  for line in $BLKDEVS; do
+    if [ "$(echo $BLOCKDEVICES | /bin/busybox grep "$line" 2>/dev/null)" = "" ]; then
+      RC=0
+      NEWBLKDEVS=$(echo $NEWBLKDEVS $line)
+    fi
+  done
+  line=""
+  SCSIBLKDEVS=`/bin/busybox cat /proc/scsi/scsi 2>/dev/null`
+  INTERNDEVS=""
+  for line in $SCSIBLKDEVS; do
+    var=""
+    case $line in
+      scsi*)
+         var="$(echo $line | /bin/busybox tr -d [:alpha:] 2>/dev/null)"
+      ;;
+      "Host: scsi"*)
+         var="$(echo $line | /bin/busybox cut -f2 -d':' | /bin/busybox tr -d [:alpha:] 2>/dev/null)"
+      ;;
+    esac
+    if [ "$var" != "" ]; then INTERNDEVS=$(echo $INTERNDEVS $var); fi
+  done
+  line=""
+  NEWINTERNDEVS=""
+  for line in $INTERNDEVS; do
+     var="$(/bin/busybox ls -1 /sys/class/scsi_disk/$line:* 2>/dev/null)"
+     if [ "$var" != "" ]; then
+       var=$(/bin/busybox readlink -f $var/device 2>/dev/null)
+       RC=0
+     fi
+     if [ "$var" != "" ]; then
+       NEWINTERNDEVS=$(echo $NEWINTERNDEVS $var)
+     fi
+  done
+  line=""
+  for line in $NEWINTERNDEVS; do
+    for var in $NEWBLKDEVS; do
+      if [ "$(/bin/busybox ls -1 $line 2>/dev/null)" = "$(/bin/busybox readlink -f /sys/block/$var/device 2>/dev/null)" ]; then
+        RC=0;
+        echolog " New device /dev/$var discovered!"
+
+      fi
+    done
+  done
+  return $RC
+}
+#
+set_system_variables()
+{
+  #local BLOCKDEVLIST   var  devtyp
+   actualize_systime_criticals
+   if check_for_new_devices; then
+    set_blockdevice_list
+    set_partition_list
+    DEVICELIST=`generate_device_list`
+    set_blkid_cmd ""
+    BLKIDRESULT=`$BLKID`
+  elif [ $SYSTIMEPASSED -gt 0 ]; then
+    set_blockdevice_list
+    set_partition_list
+    DEVICELIST=`generate_device_list`
+    set_blkid_cmd ""
+    BLKIDRESULT=`$BLKID`
+  fi
+}
+#
+set_device_variables_sysblock()
+{
+  local BLOCKDEVLIST   var  devtyp
+  actualize_systime_criticals
+  if [ "$(echo "$BLKIDRESULT")" = "" -o $SYSTIMEPASSED -gt 0 ]; then set_blkid_cmd ""; fi
+  if [ "$(echo "$BLOCKDEVICES")" = "" -o $SYSTIMEPASSED -gt 0 ]; then
+  BLOCKDEVLIST=$(/bin/busybox ls -1 /sys/block)
+  for DEV in $BLOCKDEVLIST; do
+    var=$(echo $DEV | /bin/busybox tr -d [:digit:])
+    #devtyp=`disk_type /dev/$DEV`
+    #if [ "$devtyp" != "" ]; then DEVICELIST="$(echo $DEVICELIST "+" $devtyp)"; fi
+    if [ "$var" != "ram" ]; then
+      if [ "$var" != "loop" ]; then
+       BLOCKDEVICES="$(echo $BLOCKDEVICES $var)"
+      fi
+    fi
+  done
+  fi
+
+  if [ "$(echo "$PARTITIONLIST")" = "" -o $SYSTIMEPASSED -gt 0 ]; then
+  for DEV in $BLOCKDEVICES; do
+     # solaris or sgios or other unix derivatives may have up to 6 or 12 partitions...
+     var="`/bin/busybox readlink -f /sys/block/$DEV 2>/dev/null`"
+     if [ -d $var ]; then
+       for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+         if [ -e  /dev/$DEV$i ]; then
+          PARTITIONLIST="$(echo $PARTITIONLIST $DEV$i)"
+          #devtyp=""
+          #devtyp=`disk_type /dev/$DEV$i`
+          #if [ "$devtyp" != "" ]; then DEVICELIST="$(echo $DEVICELIST "+" $devtyp )"; fi
+         fi
+       done
+     fi
+  done
+  fi
+
+  if [ $SYSTIMEPASSED -gt 0 ]; then
+    DEVICELIST=`generate_device_list`
+  fi
+}
+#
+# List all block devices
+#
+list_block_devices()
+{
+   debug_log "list_block_devices" "$*"
+   local DEVTYP  YESORNO
+   # TODO: check if a NFS Volume is visible under /sys/block or where else????
+   set_system_variables
+   for DEVTYP in $DEVICELIST; do
+     YESORNO="x"
+     if [ "$NOUSB" != "" -a  "$(echo $DEVTYP | /bin/busybox grep "usb-storage")" != "" ]; then
+        YESORNO=""
+     fi
+     if [ "$NOCD" != "" -a  "$(echo $DEVTYP | /bin/busybox grep "cdrom")" != "" ]; then
+        YESORNO=""
+     fi
+     if [ "$NOHD" != "" -a "$(echo $DEVTYP | /bin/busybox grep "disk")" != "" ]; then
+       if [ "$(echo $DEVTYP | /bin/busybox grep "usb-storage")" = "" -a "$(echo $DEVTYP | /bin/busybox grep "cdrom")" = "" ]; then
+         YESORNO=""
+       fi
+     fi
+     if [ "$YESORNO" != "" ]; then
+       echo "$DEVTYP" | /bin/busybox cut -f1 -d'|'
+     fi #
+   done
+}
+#
+is_block_device()
+{
+  local  FN
+  if [ "$1" = "" ]; then return 255; fi
+  FN=$(/bin/busybox basename $1  2>/dev/null | /bin/busybox tr -d [:digit:])
+  if [ "$(echo $BLOCKDEVICES | /bin/busybox grep "$FN" 2>/dev/null)" != "" ]; then return 0; fi
+  return 1
+}
+#
+# Format mountdir for device. This function used to append _cdrom or _removable
+# suffix to the directory name so KDE was able to assign a nice icon for every
+# device, but this should be done using HAL in KDE nowadays, so we do not
+# support these stupid suffixes anymore. Many people will be happy :)
+# $1 = device full path, eg. /dev/hda1
+#
+device_mountdir()
+{
+   debug_log "device_mountdir" "$*"
+   echo "/$MOUNTDIR/$(/bin/busybox basename "$1")" | /bin/busybox tr -s /
+}
+#
+# Find file-path on given device
+# First it mounts the device read-only. If then the 'path' is found,
+# then remount without RO flag (causes it to be mounted read-write if possible)
+# and return the path, else unmount and exit.
+# If the device/dev_directory is already mounted, preserve it mounted
+# $1 = device
+# $2 = path/filename
+#
+find_filepath()
+{
+   debug_log "find_filepath" "$*"
+   local DIR FOUND PRESERVE
+
+   DIR=$(device_mountdir $1)
+   is_mount_point $DIR
+   if [ $? -eq 0 ]; then
+      PRESERVE="true"
+   else
+      mount_device $1 $DIR ro
+      if [ $? -ne 0 ]; then /bin/busybox rmdir $DIR ; return 1; fi
+      PRESERVE=""
+   fi
+
+   FOUND=$(/bin/busybox ls -A1d $DIR/$2 2>/dev/null | /bin/busybox head -n 1 2>/dev/null | /bin/busybox tr -s '/' 2>/dev/null)
+
+   if [ "$FOUND" = "" ]; then
+      if [ "$PRESERVE" != "true" ]; then
+         fumount $DIR
+         /bin/busybox rmdir $DIR
+      fi
+      return 1
+   else
+      # remount without the 'ro' option now, so use rw or defaults
+      # Only in the case it was not mounted already before.
+      if [ "$PRESERVE" != "true" ]; then
+         fumount $DIR
+         mount_device $1 $DIR
+         if [ $? -ne 0 ]; then
+            /bin/busybox rmdir $DIR
+	    return 2
+	 fi
+      fi
+      echo "$FOUND"
+      return 0
+   fi
+}
+#
+# simplified and optimized version -
+# we are sure that $1 is of type dir/sgnfile and $2=/dev/xxx exists
+find_file_on_dev()
+{
+   debug_log "find_file_on_dev" "$*"
+   local FIND LIST INLIST MNTDIR
+   if [ "$1" = "" ]; then
+     LIVEFULLPATH=""
+     return 255
+   fi
+   if [ "$2" = "" ]; then
+     LIVEFULLPATH=""
+     return 255
+   fi
+   if [ -e $1 ]; then
+     #set -x
+     FIND=$2
+     MNTDIR=/$MOUNTDIR/$(/bin/busybox basename $1  2>/dev/null)
+     mount_device $1 $MNTDIR
+     ERR=$?
+     if [ $ERR -gt 2 ]; then
+      if [ ! -e $MNTDIR ]; then
+       /bin/busybox mkdir -p $MOUNTDIR   2>/dev/null
+       /bin/busybox mkdir -p $MNTDIR     2>/dev/null
+      fi
+      /bin/busybox mount $DEVICE $MNTDIR 2>/dev/null
+     fi
+     if [ -e $MNTDIR/$FIND ]; then
+       LIVEFULLPATH=$MNTDIR/$FIND
+       DATADEV=$1
+     else
+       LIVEFULLPATH=`/bin/busybox find $MNTDIR/$FIND 2>/dev/null`
+       DATADEV=$1
+     fi
+     #echo "LIVEFULLPATH=$LIVEFULLPATH"
+     if [ "$LIVEFULLPATH" = "" ]; then
+       fumount $MNTDIR
+       fumount $1
+       /bin/busybox rmdir $MNTDIR  $EMSG
+       return 1
+     fi
+   else
+     LIVEFULLPATH=""
+     echolog "Device $1 not existing."
+     return 254
+   fi
+   return 0
+}
+#
+# Find file in computer by mounting disks or other storage devices
+# and searching for $1 in the mounted directory
+# $1 = filename or device-path or devicepath/filename
+#
+# Find In Computer
+# use 'find_file' function to find the given file/dir
+# if nothing found, sleep for a while to allow devices to settle and try again.
+# $1 = file or directory to find
+# now with more exact description and determination of devices
+# by list_block_devices , which does call set_system_variables...
+#
+find_in_computer()
+{
+   debug_log "find_in_computer" "$*"
+   local  RESULT TIMEOUT BLKDEVS  BBBLKID
+   TIMEOUT=2    # 0$WAITFORROOT
+   BLKDEVS=""
+   BBBLKID=""
+   while [ 0$TIMEOUT -ne 0 ]; do
+      #echo -n "- wait a while\r" >&2
+     #QUIET=quiet
+     /bin/busybox sleep 1
+     TIMEOUT=$(/bin/busybox expr $TIMEOUT '-' 1  2>/dev/null)
+      # make sure there is an initialization
+      # list_block_devices calls set_system_variables !
+     #set -x
+     if [ "$BLOCKDEVICES" = "" -o "$DEVICELIST" = "" ]; then
+       set_system_variables
+     fi
+     RESULT=$BLKIDTIMEOUT
+#     stop the automatic periodic overwriting of $BLKID
+     BLKIDTIMEOUT=60
+     BLKID="/bin/busybox blkid"
+      # make sure there is an initialization
+      # list_block_devices calls set_system_variables !
+     BLKDEVS="`list_block_devices`"
+     BLKIDTIMEOUT=$RESULT
+     BBBLKID="`/bin/busybox blkid  2>/dev/null | /bin/busybox sort 2>/dev/null`"
+     RESULT=""
+     DEV=""
+     BLKDEVS="$(echo $BLKDEVS | /bin/busybox tr "\n" " " 2>/dev/null)"
+     BBBLKID="$(echo $BBBLKID | /bin/busybox tr "\n" " " 2>/dev/null)"
+     #echo "Blockdevices $BLKDEVS"
+     #echo "blkid=$BBBLKID"
+     if [ "$(echo $BLKDEVS)" != "" ]; then
+      echo -n "."
+      # make sure there is only partition devices confirmed by blkid
+      for DEV in $(echo $BLKDEVS); do
+         #DEV="$(echo "$DEV" | /bin/busybox cut -f1 -d ':' 2>/dev/null)"
+         if [ "$(echo $BBBLKID | /bin/busybox grep "$DEV" 2>/dev/null)" != "" ]; then
+           RESULT=$(echo $RESULT $DEV)
+         fi
+      done
+      DEV=""
+      for DEV in $RESULT; do
+        if find_file_on_dev "$DEV" "$1";  then
+          DATADEV=$DEV
+          echo "."
+          return 0
+        else
+          echolog "no file $LIVEDIRNAME/$SGNFILE  found in $DEV...."
+        fi
+      done
+     else
+       echolog "No block devices found in this machine....$TIMEOUT"
+     fi
+   done
+   echo "."
+   LIVEFULLPATH=""
+   return 1
+}
+#
+# Find and run all scripts from the given module
+# This function is used by the activate and deactivate script when the distro
+# is already started, not during live setup
+# $1 = mounted module full path
+# $2..$n = optional arguments for the scripts, eg. 'start'
+#
+find_n_run_scripts()
+{
+   debug_log "find_n_run_scripts" "$*"
+   local MOD
+   MOD="$1"
+   shift
+   if [ -d $MOD/etc/rc.d -o -d $MOD/etc/rc.d/init.d -o -d $MOD/etc/init.d ]; then
+      ( /bin/busybox find $MOD/etc/rc.d -type f -maxdepth 1 2>/dev/null ; \
+        /bin/busybox find $MOD/etc/init.d -type f -maxdepth 1 2>/dev/null  ; \
+        /bin/busybox find $MOD/etc/rc.d/init.d -type f -maxdepth 1 2>/dev/null \
+      ) | /bin/busybox  cut -b ${#MOD}- | /bin/busybox cut -b 2- | /bin/busybox xargs -n 1 -r /bin/busybox readlink -f | /bin/busybox sort -u | while read SCRIPT; do
+         if [ "$SCRIPT" != "" -a -x "$SCRIPT" -a ! -d "$SCRIPT" ]; then
+            # call the script by real path, not from the module
+            log "starting '$SCRIPT $@'"
+            ${SCRIPT} "$@"
+         fi
+      done
+   fi
+}
+#
+# ===========================================================
+# hardware preparation functions
+# ===========================================================
+
+# Create block devices to /dev described by /sys entries
+#
+mdev_start_hotplug()
+{
+   debug_log "mdev_start_hotplug" "$*"
+   echolog "creating /dev entries for block devices"
+   /bin/busybox mdev -s  $EMSG
+   /bin/busybox rm /dev/pty??* /dev/tty??*  $EMSG  # remove unneeded pty and tty devices
+   echo "/bin/busybox mdev -s" > /proc/sys/kernel/hotplug # use mdev as a hotplug handler
+}
+#
+# Modprobe kernel modules needed for the LiveCD
+#
+modprobe_essential_modules()
+{
+   debug_log "modprobe_essential_modules" "$*"
+   local MESG1 MESG2
+   echolog "probing for kernelmodules in initramfs /lib/modules/$KERNVER - load them if they are there..."
+   inline_externalfile "modprobe-functions"
+#   load_inputdev_drivers "liblinuxrc"
+   probe_inputdev_drivers "$0"
+
+   probe_filesystems "$0"
+
+   modprobe_kernelmodule  rtc-core
+   modprobe_kernelmodule  rtc-lib
+   modprobe_kernelmodule  rtc-cmos
+
+   modprobe_kernelmodule  scsi_mod
+   modprobe_kernelmodule  scsi_debug
+   modprobe_kernelmodule  sd_mod
+   if [ "$NOCD" = "" ]; then
+    modprobe_kernelmodule  sr_mod
+   fi
+   if [ "$NOINT" != "" ]; then
+	   modprobe_kernelmodule  sg
+	   modprobe_kernelmodule  ata
+	   modprobe_kernelmodule  libata
+	   modprobe_kernelmodule  ahci
+	   modprobe_kernelmodule  ata_piix
+	   modprobe_kernelmodule  ata_generic
+   fi
+   if [ "$NOIDE" = "" ]; then
+	   modprobe_kernelmodule  ide-core
+	   modprobe_kernelmodule  ide-gd_mod
+	   modprobe_kernelmodule  ide-cd_mod
+	   modprobe_kernelmodule  ide-pnp
+	   modprobe_kernelmodule  ide_platform
+	   modprobe_kernelmodule  ide-pci-generic
+	   modprobe_kernelmodule  ide-generic
+	   modprobe_kernelmodule  cdrom
+   fi
+
+
+}
+#
+# Modprobe kernel modules needed for USB masstorage devices
+#
+modprobe_usb_modules_new()
+{
+   debug_log "modprobe_usb_modules" "$*"
+   probe_external_storage  "$0"
+}
+#
+modprobe_usb_modules()
+{
+   debug_log "modprobe_usb_modules" "$*"
+#   local LSPCI HCDMOD
+
+   # skip module loading if nohotplug bootparam is present
+   modprobe_kernelmodule  scsi_mod
+#   modprobe_kernelmodule  scsi_debug
+   modprobe_kernelmodule  sg
+   modprobe_kernelmodule  sd_mod
+   modprobe_kernelmodule  sr_mod
+
+   modprobe_kernelmodule  ata
+   modprobe_kernelmodule  libata
+
+if [ "$NOUSB" = "" ]; then
+
+   modprobe_kernelmodule usbhid
+   modprobe_kernelmodule usb_hid
+   modprobe_kernelmodule usbkbd
+   modprobe_kernelmodule usbmouse
+
+#   The most simple and elegant way is to do it anyway
+   modprobe_kernelmodule usbcore
+   modprobe_kernelmodule whcicore
+
+# and leave the possibility to allocate usb-core dynmically
+   modprobe_kernelmodule xhci_hcd
+   modprobe_kernelmodule ehci_hcd
+   modprobe_kernelmodule uhci_hcd
+   modprobe_kernelmodule ohci_hcd
+   modprobe_kernelmodule whci
+   modprobe_kernelmodule whci_hcd
+
+ # finally set up the disk storage drive
+   modprobe_kernelmodule usb-storage
+
+   modprobe_kernelmodule usb-libusual
+   modprobe_kernelmodule ums-datafab
+   modprobe_kernelmodule ums-freecom
+   modprobe_kernelmodule ums-isd200
+   modprobe_kernelmodule ums-usbat
+   modprobe_kernelmodule ums-sddr09
+   modprobe_kernelmodule ums-sddr55
+   modprobe_kernelmodule ums-freecom
+   modprobe_kernelmodule ums-jumpshot
+   modprobe_kernelmodule ums-alauda
+   modprobe_kernelmodule ums-onetouch
+   modprobe_kernelmodule ums-karma
+   modprobe_kernelmodule ums-cypress
+fi
+if [ "$NOFW" = "" ]; then
+   modprobe_kernelmodule firewire-core
+
+   #modprobe_kernelmodule  firewire-net
+   modprobe_kernelmodule  firewire-sbp2
+   modprobe_kernelmodule  firewire-ohci
+
+
+   modprobe_kernelmodule  ieee1394
+
+   modprobe_kernelmodule  ohci1394
+   modprobe_kernelmodule  ieee1394-sbp2
+fi
+
+}
+#
+remove_unneeded()
+{
+# TODO:   remove_unused_kernelmodules in lsmod
+  debug_log "remove_unneeded"
+}
+#
+# Load drivers for PCMCIA CardBus devices
+#
+modprobe_pcmcia_modules()
+{
+   debug_log "modprobe_pcmcia_modules" "$*"
+
+   echolog "starting PCMCIA CardBus support"
+   modprobe_kernelmodule pcmcia_core
+   modprobe_kernelmodule pcmcia
+   modprobe_kernelmodule rsrc_nonstatic
+   modprobe_kernelmodule yenta_socket
+}
+#
+#
+# Load network drivers unless eth[0-9] is found
+#
+modprobe_network_modules()
+{
+   debug_log "modprobe_network_modules" "$*"
+   local ETH
+# TODO:  this has to be done with the process management
+#        dmesg is too unsafe
+   if [ "$NONET" != "" ]; then return 0; fi
+
+   # probe all drivers. Start by the ones mentioned in pcimodules' output
+   for module in `list_network_drivers`; do
+      modprobe_kernelmodule $module
+      ETH=`echo  $(/bin/busybox dmesg | /bin/busybox grep "$module" | /bin/busybox grep "ifname eth")`
+      if [ "$ETH" != "" ]; then
+         echolog "brought up $ETH"
+         #return 0
+      else
+         rmmod $module 2>/dev/null
+      fi
+   done
+}
+#
+# a heuristic method to determine a module active or not
+# NOT YET WORKING
+is_kernelmodule_active()
+{
+   debug_log "is_module_active" "$*"
+
+   local MODULE i line KMOD
+   if [ "$1" = "" ]; then return 255; fi
+   KMOD=$(echo $1 | /bin/busybox tr "-" "_" )
+   if [ "$(/bin/busybox lsmod | /bin/busybox grep "$KMOD ")" != "" ]; then
+     MODULE=`/bin/busybox dmesg | /bin/busybox grep "$1"`
+     if [ "$MODULE" != "" ]; then
+       if [ "$(echo "$MODULE" | /bin/busybox tr -d "\n")" != "$MODULE" ]; then
+         return 0
+       fi
+       return 1
+     else
+       return 3
+     fi
+   else
+     return 5
+   fi
+   return 254
+}
+#
+# NOT YET WORKING
+remove_unused_kernelmodule()
+{
+   debug_log "remove_unused_kernelmodule" "$*"
+   local ERR KMOD
+   if [ "$1" = "" ]; then return 255; fi
+   is_kernelmodule_active "$1"
+   ERR=$?
+   # it is active do not remove
+   if [ $ERR -eq 0 ]; then return 255; fi
+   #  module not loaded, end up
+   if [ $ERR -eq 254 ]; then return 254; fi
+   if [ $ERR -eq 5 ]; then return 5; fi
+     /bin/busybox rmmod "$1"  2>/dev/null
+     return 0
+
+}
+#
+# Start udhcpc to get IP address from DHCP server
+# $1 = interface to use (optional)
+#
+init_dhcp()
+{
+   debug_log "start_dhcp_client" "$*"
+   if [ "$NONET" != "" ]; then return 0; fi
+   if [ "$1" != "" ]; then
+      ifconfig $1 up
+      udhcpc -i $1 -q
+   else
+      ifconfig eth0 up
+      udhcpc -q
+   fi
+}
+#
+# Mount http filesystem from the given server
+# $1 = server
+# $2 = mountdir
+#
+mount_httpfs()
+{
+   debug_log "mount_httpfs" "$*"
+   if [ "$NONET" != "" ]; then return 0; fi
+   /bin/busybox mkdir -p $2 #$EMSG
+   httpfs $1 $2
+}
+#
+# Unload modules loaded to kernel which are not used
+# This function used to unload more modules, but it may cause
+# problems to auto-remove some of them (eg. a network module
+# can seem unneeded even if network is to be used very soon.
+#
+rmmod_unused_modules()
+{
+   debug_log "rmmod_unused_modules" "$*"
+   rmmod usb-storage uhci-hcd ohci-hcd ehci-hcd 2>/dev/null
+   rmmod yenta_socket rsrc_nonstatic pcmcia pcmcia_core 2>/dev/null
+}
+#
+# kill all unneeded processes, which have bigger PID then the PID of
+# current shell. We can't use killall5, as it would kill some processes
+# which may be currently needed, for example ntfsmount.
+# $1 = maximum pid (kill all lower)
+#
+killall_unneeded()
+{
+   debug_log "killall_unneeded" "$*"
+   local LIST PID
+
+   PID=$1
+   for pid in $(/bin/busybox ps | /bin/busybox grep -v "PID" | /bin/busybox egrep -v "\[.*\]" | /bin/busybox fgrep -v mount | /bin/busybox fgrep -v posixovl | /bin/busybox fgrep -v ntfs | /bin/busybox sed -r "s/^[[:space:]]*([0-9]+).*/\\1/"); do
+      if [ $pid -lt $PID ]; then
+         LIST="$LIST $pid"
+      fi
+   done
+
+   kill -SIGTERM $LIST 2>/dev/null # SIGTERM
+   /bin/busybox sleep 2
+   kill -SIGKILL $LIST 2>/dev/null # SIGKILL
+}
+### under construction !!!!!!
+set_essential_links()
+{
+   debug_log "set_essential_links" "$*"
+   local TARGET  VERSION1 VERSION2 VERSION3
+   TARGET=$1
+   /bin/busybox mount -o remount,rw /$TARGET
+   /bin/busybox mount -o remount,rw /
+
+   if ! [ -e $TARGET/bin/busybox ]; then
+    /bin/busybox --install -s
+    /bin/busybox cp -f /bin/busybox $TARGET/bin/busybox
+    /bin/busybox cp -P /usr/bin/* $TARGET/usr/bin
+    /bin/busybox cp -P /bin/* $TARGET/bin
+    /bin/busybox cp -P /usr/sbin/* $TARGET/usr/sbin
+    /bin/busybox cp -P /sbin/* $TARGET/sbin
+   else
+     if [ "$(/bin/busybox)" != "$($TARGET/bin/busybox)" ]; then
+       /bin/busybox --install -s
+       /bin/busybox cp -f /bin/busybox $TARGET/bin/busybox
+       /bin/busybox cp -P /usr/bin/* $TARGET/usr/bin
+       /bin/busybox cp -P /bin/* $TARGET/bin
+       /bin/busybox cp -P /usr/sbin/* $TARGET/usr/sbin
+       /bin/busybox cp -P /sbin/* $TARGET/sbin
+     fi
+   fi
+
+   # /bin/bash version 3.1 through 4
+   if [ -e $TARGET/bin/bash ]; then
+     VERSION1="$($TARGET/bin/bash --version | /bin/busybox cut -f1 -d. | /bin/busybox grep version | /bin/busybox grep 3)"
+     VERSION3="$($TARGET/bin/bash --version | /bin/busybox cut -f2 -d. | /bin/busybox grep  "[1-4]")"
+     VERSION2="$($TARGET/bin/bash --version | /bin/busybox cut -f1 -d. | /bin/busybox grep version | /bin/busybox grep 4)"
+     VERSION1= [ $VERSION1 ] && [ $VERSION3 ]
+     if [ "$VERSION1" = "" -a "$VERSION2" = "" ]; then
+       echolog "Target system contains invalid version of bash, patching with latest busybox.."
+       #cp  /bin/busybox $TARGET/bin/busybox
+       /bin/busybox mv $TARGET/bin/bash $TARGET/bin/bash-outofdate
+       cd $TARGET/bin
+       /bin/busybox ln -s "./busybox" "bash"
+       /bin/busybox ln -s "./busybox" "ash"
+     else
+       echolog "Target system contains valid version of bash, continuing..."
+     fi
+   else
+      echolog "Target system contains no bash, patching with local busybox.."
+      /bin/busybox cp  /bin/busybox $TARGET/bin/busybox
+      #mv $TARGET/bin/bash $TARGET/bin/bash-outofdate
+      cd $TARGET/bin
+      /bin/busybox ln -s "./busybox" "bash"
+      /bin/busybox ln -s "./busybox" "ash"
+   fi
+
+}
+#
+# enable/disable CD autoejecting when unmounted
+# $1 = 1|0 ... enable|disable
+#
+cd_autoeject()
+{
+   debug_log "cd_autoeject" "$*"
+   echo $1 >/proc/sys/dev/cdrom/autoeject
+}
+#
+# ===========================================================
+# FSTAB functions
+# ===========================================================
+# $1 = fstab file
+# $2 = device name
+dev_is_in_fstab()
+{
+   debug_log "dev_is_in_fstab" "$*"
+   /bin/busybox cat "$1" | /bin/busybox sed -r "s/#.*//" | /bin/busybox egrep -q "^[[:space:]]*$2[[:space:]]"
+}
+#
+# update given line in fstab, add new values only if the device is not found
+# $1 = fstab file to parse
+# $2 = device name
+# $3 = mountpoint
+# $4 = filesystem
+# $5 = mount options
+#
+fstab_add_line()
+{
+   debug_log "fstab_add_line" "$*"
+   local DIR
+
+   if [ "$4" != "swap" ]; then DIR="$3"; else DIR="none"; fi
+   if ! dev_is_in_fstab "$1" "$2"; then
+     echo "$2" "$DIR" "$4" "$5" 0 0 "$FSTABLLFLAG" >>$1
+   fi
+}
+#
+# create correct fstab file in $1/etc/fstab and create apropriate
+# mount directories in $1/mnt. This function is only calld once,
+# during liveCD startup (even before init from the distro is started).
+# $1 = root directory (union)
+#
+fstab_update()
+{
+   debug_log "fstab_update" "$*"
+   local FSTAB FSTABTMP yesno
+
+   FSTAB="$1/etc/fstab"
+   FSTABTMP=$FSTAB-tmp
+   /bin/busybox mkdir -p $1/etc $1/mnt
+   /bin/busybox cat $FSTAB 2>/dev/null | /bin/busybox grep -v "$FSTABLLFLAG" >$FSTABTMP
+   fstab_add_line $FSTABTMP $UNION / $LAYERFS  defaults
+   fstab_add_line $FSTABTMP proc /proc proc defaults
+   fstab_add_line $FSTABTMP sysfs /sys sysfs defaults
+   fstab_add_line $FSTABTMP devpts /dev/pts devpts "gid=5,mode=620"
+   fstab_add_line $FSTABTMP tmpfs /dev/shm tmpfs defaults
+
+   set_system_variables
+
+   if  [ "$NOCD" = "" ]; then
+   list_cdrom_devices | while read DEVICE; do
+      MNT=$(device_mountdir $DEVICE)
+      FS=$(device_filesystem $DEVICE)
+      if [ "$FS" = "" ]; then FS=iso9660; fi
+      /bin/busybox mkdir -p "$1/$MNT"
+      fstab_add_line $FSTABTMP $DEVICE $MNT $FS $(fs_options $FS fstab)
+   done
+   fi
+
+   list_partition_devices | while read DEVICE; do
+      MNT=$(device_mountdir $DEVICE)
+      FS=$(device_filesystem $DEVICE)
+      OPT=$(fs_options $FS fstab)
+      if [ "$FS" = "swap" ]; then
+         if [ "$NOSWAP" != "" ]; then
+            FS="unsupportedfs"
+         else
+         {
+           echolog "`list_swap_devices`"
+           echolog " Do you want to use existing swap space in $DEVICE  ? "
+           echolog " answer:  y | yes  or  n | no (default) "
+           read -r yesno
+           if [ "$yesno" = "yes" || "$yesno" = "y" ]; then
+              fstab_add_line "$FSTABTMP" "$DEVICE" "$MNT" "$FS" "$OPT"
+           else
+            FS="unsupportedfs"
+           fi
+         }
+         fi
+      fi
+# If the partition has a valid filesystem, add it to fstab
+      local ADDIT
+      if is_supported_filesystem "$FS"; then
+         ADDIT=1
+         if is_external "$DEVICE"; then
+            if [ "$NOUSB" != "" ]; then ADDIT=0; fi
+         fi
+         if [ "$NOHD" != "" ]; then ADDIT=0; fi
+         if [ $ADDIT ] ; then
+           /bin/busybox mkdir -p "$1/$MNT"
+           fstab_add_line $FSTABTMP $DEVICE $MNT $FS $OPT
+         fi
+      fi
+   done
+
+   /bin/busybox mv -f $FSTABTMP $FSTAB
+}
+#end !
+if [ "$QUIET" = "" ]; then
+  echo "$INITPREF : all branch-block-functions read in !"
+fi
+
