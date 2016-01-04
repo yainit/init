@@ -1,1 +1,0 @@
-DEFAULT_SOUNDDRIVERS="snd_page_alloc soundcore snd snd_timer snd_pcm snd_hwdep snd_hda_codec snd_hda_codec_hdmi snd_hda_codec_realtek snd_hda_intel"

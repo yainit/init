@@ -1,0 +1,2435 @@
+#
+# functions necessary for all my scripts
+#  (c) Dieter Miosga, 2012-02-01 through 2015-12-24
+#
+echo "[ $0 ] : Reading functions ...."
+#set -x
+#
+PROCNUM=""
+STARTTIME=""
+STARTTIMENS=""
+HR=""
+MIN=""
+SEC=""
+HRSEC=""
+MINSEC=""
+STRT=""
+NANOS=0
+
+MOUNTDIR=""
+LOGFILE="/var/log/networking.log"
+RUNNER="`/bin/busybox whoami 2>/dev/null`"
+LSBMOUNTDIR="/media"
+SYSMOUNTDIRPATH="/run/media"
+SYSMOUNTDIR="$SYSMOUNTDIRPATH/$RUNNER"
+if ! [ -e $SYSMOUNTDIR ]; then
+  /bin/busybox mkdir -p  $SYSMOUNTDIR  2>/dev/null
+fi
+if [ "$SYSMOUNTDIR" != "$SYSMOUNTDIRPATH/" ]; then 
+  MOUNTDIR="$SYSMOUNTDIR"
+else
+  MOUNTDIR="$LSBMOUNTDIR"
+fi
+
+makedirs_mountdir()
+{
+ if [ "$1" != "" ]; then
+   DIRECTORY="$1"
+ else 
+   DIRECTORY="$MOUNTDIR"
+ fi
+  #while [ "$DIRECTORY" != "/" ]; do
+  #  DIRECTORY=$(/bin/busybox dirname $DIRECTORY 2>/dev/null)
+  #  DIRNAME="$DIRECTORY $DIRNAME" 
+  #done
+  #for DIRECTORY in $DIRNAME; do
+  #  /bin/busybox mkdir -p  $DIRECTORY
+  #done   
+  /bin/busybox mkdir -p  $MOUNTDIR
+  if [ "$LSBMOUNTDIR" != "" -a "$MOUNTDIR" != "$LSBMOUNTDIR" ]; then 
+    /bin/busybox ln -sf $MOUNTDIR $LSBMOUNTDIR/$RUNNER  2>/dev/null    
+  fi
+}
+#
+echoconsole()
+{
+  local  SCRIPT
+  # the //scriptname form of scriptname remained
+  # for some kernel internal reason
+  SCRIPT="$1"
+  #SCRIPT="$(echo $1 | /bin/busybox tr -d "\/" 2>/dev/null)"
+  #[ "$SCRIPT" = "" ] && SCRIPT="$1"
+  #shift
+  [ "$SCRIPT" != "" ] || SCRIPT="[ $0 ]:"
+  # set quiet parameter on cmdline to stop any system messages from init script
+  if [ "$QUIET" = "" ]; then echo "$SCRIPT $2 "; fi
+}
+#
+timestamp_begin()
+{
+  STRT="$(/bin/busybox date +%s%N 2>/dev/null)"
+  NANOS=${STRT}
+  export STARTTIME=${NANOS}
+  echoconsole "" "started at `/bin/busybox date -Is --date=@${STARTTIME:0:10} ` in nanos '$STARTTIME'"
+
+}
+#
+startts()
+{
+  echoconsole "" "$(/bin/busybox uname -a )"
+  echoconsole ""  "$(/bin/busybox grep -m1 'model name' /proc/cpuinfo | /bin/busybox cut -f2 -d ':' )"
+  echoconsole "" "processor family : level" "$(/bin/busybox grep -E -m1 'cpu family' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" ":" "$(/bin/busybox grep  -m1 'cpuid level' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" " at " "$(/bin/busybox grep -E -m1 'cpu MHz' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" " MHz"
+  echoconsole "" " with " "$(/bin/busybox grep -m1 'cpu cores' /proc/cpuinfo | /bin/busybox cut -f2 -d: )"  " cpu cores and each " "$(/bin/busybox grep  -m1 'cache size' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" " of L2-Cache"
+  PROCNUM=$(/bin/busybox grep -m1 "cpu cores" /proc/cpuinfo | /bin/busybox cut -f2 -d: | /bin/busybox tr -d " " 2>/dev/null )
+  # yet no nanosecond display of date with busybox exists
+  #STRT="$(/bin/busybox date -Ins )"
+  STRT="$(/bin/busybox date -Is )"
+  #if [ "$STRT" = "" ]; then STRT="$(/bin/busybox date -Is )" ; fi
+  echoconsole "" "$STRT"
+  HR="$(echo "$STRT" | /bin/busybox cut -f1 -d ':' | /bin/busybox cut -f2 -d 'T')"
+  # remove leading zeros
+  NANOS="$HR"
+  local ZERO="$(echo "$NANOS" | /bin/busybox cut -c 1  )"
+  if [ "$ZERO" = "0" ]; then NANOS="$(echo "$NANOS" | /bin/busybox cut -c 2- )"; fi
+  if [ $NANOS -lt 10 ]; then
+    HR=$NANOS
+  fi 
+  #echo "$MIN minuten ...."
+  HRSEC=$(( $HR * 3600 ))
+  MIN="$(echo "$STRT" | /bin/busybox cut -f2 -d ':' )"
+  # remove leading zeros
+  NANOS="$MIN"
+  ZERO="$(echo "$NANOS" | /bin/busybox cut -c 1 )"
+  if [ "$ZERO" = "0" ]; then NANOS="$(echo "$NANOS" | /bin/busybox cut -c 2- )"; fi
+  if [ $NANOS -lt 10 ]; then
+    MIN=$NANOS
+  fi 
+  #echo "$MIN minuten ...."
+  MINSEC=$(( $MIN * 60 ))
+  SEC="$(echo "$STRT" | /bin/busybox cut -f3 -d ':' | /bin/busybox cut -f1 -d '+' )"
+  #echo "$SEC sekunden ...."
+  # remove leading zeros
+  NANOS="$SEC"
+  ZERO="$(echo "$NANOS" | /bin/busybox cut -c 1 )"
+  if [ "$ZERO" = "0" ]; then NANOS="$(echo "$NANOS" | /bin/busybox cut -c 2- )"; fi
+  if [ $NANOS -lt 10 ]; then
+    SEC=$NANOS
+  fi 
+  STARTTIMENS="$(echo "$STRT"  | /bin/busybox cut -f2 -d ',' | /bin/busybox cut -f1 -d '+' 2>/dev/null )"
+  #STARTTIMENS=$STARTTIMENS
+  STARTTIME=$(( $MINSEC + $SEC ))
+  STARTTIME=$(( $HRSEC + $STARTTIME))
+  if [ "$1" != "" ]; then
+    echoconsole "" "$(/bin/busybox uname -a )" >> $1 2>&1
+    echoconsole "" "$(/bin/busybox grep -m1 'model name' /proc/cpuinfo | /bin/busybox cut -f2 -d: )"  >> $1 2>&1
+    echoconsole "" "processor family:level " "$(/bin/busybox grep  -m1 'cpu family' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" ":" "$(/bin/busybox grep -E -m1 'cpuid level' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" " at " "$(/bin/busybox grep -m1 'cpu MHz' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" " MHz"  >> $1 2>&1
+    echoconsole "" " with " "$(/bin/busybox grep -m1 'cpu cores' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" " cpu cores and " "$(/bin/busybox grep -m1 'cache size' /proc/cpuinfo | /bin/busybox cut -f2 -d: )" " of L2-Cache " >> $1 2>&1
+    echoconsole "" " and instruction set " >> $1 2>&1
+    echoconsole "" "$(/bin/busybox grep  -m1 'flags' /proc/cpuinfo | /bin/busybox cut -f2 -d: )"  >> $1 2>&1
+    echoconsole "" "$START"  >> $1 2>&1
+    echoconsole "" "Beginning : $STARTTIME ./. $STRT " >> $1 2>&1
+  fi
+  echoconsole "" "Beginning: $STARTTIME ./. $STRT"
+}
+#
+STOPTIME=""
+STOPTIMENS=""
+STOP=""
+timestamp_stop()
+{
+  STRT="$(/bin/busybox date +%s%N 2>/dev/null)"
+  NANOS=${STRT}
+  export STOPTIME=${NANOS}
+  echoconsole "" "stopped at `/bin/busybox date -Is --date=@${STOPTIME:0:10} ` in nanos '$STOPTIME'"
+}
+#
+stopts()
+{
+
+  # yet no nanoseconds date in busybox exist
+  #STOP="$(date -Ins )"
+  STOP="$(/bin/busybox date -Is )"
+  #if [ "$STOP" = "" ]; then STOP="$(/bin/busybox date -Is )" ; fi
+  echoconsole "" "$STOP"
+  HR="$(echo "$STOP" | /bin/busybox cut -f1 -d ':' | /bin/busybox cut -f2 -d 'T' )"
+  # remove leading zeros
+  NANOS="$HR"
+  local ZERO="$(echo "$NANOS" | /bin/busybox cut -c 1 )"
+  if [ "$ZERO" = "0" ]; then NANOS="$(echo "$NANOS" | /bin/busybox cut -c 2- )"; fi
+  if [ $NANOS -lt 10 ]; then
+    HR=$NANOS
+  fi
+  HRSEC=$(( $HR * 3600 )) 
+  MIN="$(echo "$STOP" | /bin/busybox cut -f2 -d ':' )"
+  # remove leading zeros
+  NANOS="$MIN"
+  ZERO="$(echo "$NANOS" | /bin/busybox cut -c 1 )"
+  if [ "$ZERO" = "0" ]; then NANOS="$(echo "$NANOS" | /bin/busybox cut -c 2- )"; fi
+  if [ $NANOS -lt 10 ]; then
+    MIN=$NANOS
+  fi 
+  MINSEC=$(( $MIN * 60 ))
+  SEC="$(echo "$STOP" | /bin/busybox cut -f3 -d ':' | /bin/busybox cut -f1 -d '+' )"
+  NANOS="$SEC"
+  ZERO="$(echo "$NANOS" | /bin/busybox cut -c 1 )"
+  if [ "$ZERO" = "0" ]; then NANOS="$(echo "$NANOS" | /bin/busybox cut -c 2- )"; fi
+  if [ $NANOS -lt 10 ]; then
+    SEC=$NANOS
+  fi 
+  STOPTIMENS="$(echo "$STOP" |  /bin/busybox cut -f2 -d ',' | /bin/busybox cut -f1 -d '+' )"
+  #STOPTIMENS=$STOPTIMENS
+  STOPTIME=$(( $MINSEC + $SEC ))
+  STOPTIME=$(( $HRSEC + $STOPTIME ))
+  if [ "$1" != "" ]; then
+     echoconsole "" "$STOP"  >> $1 2>&1
+#     echoconsole "" "Ended(sec): $STOPTIME ./. $STOP" >> $1 2>&1
+     echoconsole "" "Ended(sec): $STOPTIME" >> $1 2>&1
+  fi
+  echoconsole "" "Ended(sec): $STOPTIME"
+#  echoconsole "" "Ended(sec): $STOPTIME ./. $STOPT"
+  
+}
+#
+DIFFTIME=""
+DIFFTIMEHR=""
+DIFFTIMENS=""
+DIFFTIMEMIN=""
+DIFFTIMESEC=""
+
+timestamp_diff()
+{
+  DIFFTIME=$(( $STOPTIME - $STARTTIME ))
+  DIFFTIMESEC=$(( $DIFFTIME   / 1000000000 ))
+  DIFFTIMENS=$(( $DIFFTIMESEC * 1000000000 ))
+  DIFFTIMENS=$(( $DIFFTIME - $DIFFTIMENS ))
+  # hours
+  DIFFTIMEHR=$(( $DIFFTIMESEC / 3600 ))
+  # hourseconds
+  DIFFTIMEMIN=$(( $DIFFTIMEHR * 3600 ))  
+  # remaining seconds after hourseconds
+  DIFFTIMESEC=$(( $DIFFTIMESEC - $DIFFTIMEMIN ))  
+  # minutes
+  DIFFTIMEMIN=$(( $DIFFTIMESEC / 60 ))  
+  # minuteseconds
+  DIFFTIME=$(( $DIFFTIMEMIN * 60 ))
+  # remaining seconds
+  DIFFTIMESEC=$(( $DIFFTIMESEC - $DIFFTIME ))
+    
+
+  STARTTIMENS=0
+  STOPTIMENS=0
+  if [ "$1" != "" ]; then
+     echoconsole "" "Endured: $DIFFTIMEHR : $DIFFTIMEMIN : $DIFFTIMESEC (hour:min:sec)  $DIFFTIMESEC.$DIFFTIMENS (sec.ns)" >> $1 2>&1
+     echoconsole "" "    started-->$STARTTIME./. $STOPTIME<--stopped "  >> $1 2>&1
+  fi
+  echoconsole "" "Endured: ns  $(( $STOPTIME -$STARTTIME ))"  
+  echoconsole "" "Endured: $DIFFTIMEHR : $DIFFTIMEMIN : $DIFFTIMESEC (hour:min:sec)  $DIFFTIMESEC.$DIFFTIMENS (sec.ns)"
+  echoconsole "" "    started-->$STARTTIME <-> $STOPTIME<--stopped "
+}
+#
+timediff()
+{
+  # we measure upto minutes
+  #if [ $STOPTIME -lt $STARTTIME ]; then
+  #  STOPTIME=$(( $STOPTIME + 3600 ))
+  #fi
+  DIFFTIME=$(( $STOPTIME - $STARTTIME ))
+  local STARTNS STOPNS ZERO
+#set -x
+  DIFFTIMEHR=$(( $DIFFTIME / 3600 ))
+  DIFFTIMEMIN=$(( $DIFFTIMEHR * 3600 ))  
+  DIFFTIMESEC=$(( $DIFFTIME - $DIFFTIMEMIN ))  
+  DIFFTIMEMIN=$(( $DIFFTIMESEC / 60 ))  
+  DIFFTIMEHR=$(( $DIFFTIMEMIN * 60 ))
+  DIFFTIMESEC=$(( $DIFFTIMESEC - $DIFFTIMEHR ))  
+  DIFFTIMEHR=$(( $DIFFTIME / 3600 ))
+
+  STARTTIMENS=0
+  STOPTIMENS=0
+  if [ "$1" != "" ]; then
+     echoconsole "" "Endured: $DIFFTIMEHR : $DIFFTIMEMIN : $DIFFTIMESEC (hour:min:sec)  $DIFFTIME.$DIFFTIMENS (sec.ns)" >> $1 2>&1
+     echoconsole "" "    started-->$STARTTIME.$STARTTIMENS ./. $STOPTIME.$STOPTIMENS<--stopped "  >> $1 2>&1
+  fi
+  echoconsole "" "Endured: $DIFFTIMEHR : $DIFFTIMEMIN : $DIFFTIMESEC (hour:min:sec)  $DIFFTIME./.$DIFFTIMENS (sec.ns)"
+  echoconsole "" "    started-->$STARTTIME.$STARTTIMENS ./. $STOPTIME.$STOPTIMENS<--stopped "
+
+}
+#
+exitfunc()
+{
+  stopts $2
+  timediff $2
+  exit $1
+}
+#
+RAMDISKFS=""
+RAMDISKDIR="/ramdisk"
+RAMSIZE=""
+RAMFREE=""
+RC=""
+MOUNTED=""
+ONEGB=""
+MAXRAM=""
+#
+mkramdisk()
+{
+
+  ONEGB=$(( 1024 * 1024 *1024 ))
+  MAXRAM=$(( 4 * $ONEGB ))
+  RAMFREE="$(/bin/busybox grep 'MemFree' /proc/meminfo | /bin/busybox cut -f2 -d: | /bin/busybox tr -d " "[:alpha:] )"
+  RAMFREE=$(( $RAMFREE * 1024 ))
+  if [ "$RAMFREE" != "" ]; then
+    if [ $RAMFREE -gt $ONEGB ]; then
+      if [ $RAMFREE -gt $MAXRAM ]; then
+        RAMFREE=$MAXRAM
+      fi
+    fi
+    mkdir -p $RAMDISKDIR
+    MOUNTED="$(/bin/busybox grep "ramfs $RAMDISKDIR"  /proc/mounts 2>/dev/null )"
+    if [ "$MOUNTED" = "" ]; then
+      mount -t ramfs -o size=$RAMFREE ramfs /ramdisk  2>/dev/null
+      RC=$?
+       if [ $RC -eq 0 ]; then
+         RAMDISKFS="$RAMDISKDIR"
+       fi
+    else
+       RAMDISKFS="$RAMDISKDIR"
+    fi
+  fi
+
+}
+#
+# thanks to R.Shingledecker/TinyCore
+# this is a faster solution than with grep
+is_string_in_file()
+{
+  case "$(/bin/busybox cat $2 2>/dev/null)" in
+    *$1*)
+      return 0
+    ;;
+  esac
+  return 1
+}
+#
+is_not_string_in_file()
+{
+  case "$(/bin/busybox cat $2 2>/dev/null)" in
+    *$1*)
+      return 1
+    ;;
+  esac
+  return 0
+}
+#
+# thanks to R.Shingledecker/TinyCore
+# this is a faster solution than with grep
+is_substring_of()
+{
+  case "$2" in
+     *$1*)
+       return 0
+     ;;
+  esac
+  return 1
+}
+#
+is_not_substring_of()
+{
+  case "$2" in
+     *$1*)
+       return 1
+     ;;
+  esac
+  return 0
+}
+#
+is_char_digit()
+{
+   case $1 in
+   [0-9])
+     return 0
+   ;;
+   esac
+   return 1
+}
+#
+is_char_not_digit()
+{
+   case "0123456789" in
+   *$1*)
+     return 1
+   ;;
+   esac
+   return 0
+}
+#
+is_token_integer()
+{
+   local token
+   token="$1"
+   if [ "${token//[abcdefghijklmnopqrstuvwxyz.,]/""}" = "$token" ];then
+     return 0
+   fi
+   return 1
+}
+#
+is_token_not_integer()
+{
+   local token
+   token="$1" 
+   if [ "${token//[0123456789]/""}" = ""  ];then 
+     return 1
+   fi
+   return 0
+}
+#
+is_token_letters()
+{
+   local token
+   token="$1" 
+   if [ "${token//[0123456789]/""}" = "$token"  ];then 
+     return 0
+   fi
+   return 1
+}
+#
+last_digits_of_string()
+{
+  local len string num digit
+  string="$1"
+  len=${#string}
+  num=""
+  digit=""
+  for i in `seq 1 $len`; do
+    digit=${string:$(( $len - $i )):1}
+    if `is_char_digit "$digit"`; then 
+      num="$digit$num"
+    else
+      break
+    fi
+  done
+  echo "$num"
+}
+#
+remove_duplicates_from_string()
+{
+
+  local STRINGVAR STRING DRV
+  if [ "$1" != "" ]; then
+    #eval STRINGVAR="\$$1"
+    STRING=""
+    STRINGVAR="$1"
+    for DRV in $STRINGVAR; do
+      if `is_not_substring_of  " $DRV " " $STRING "`; then 
+        STRING="$STRING $DRV "
+      fi
+    done
+    #if [ "$STRING" != "" ]; then
+    #  STRINGVAR="$1=\" $STRING \""
+    #  eval "$STRINGVAR"
+    #fi
+    echo "$STRING"
+    return 0
+  else
+    echo ""
+    return 127
+  fi
+}
+#
+remove_duplicate_tokens_from_global_string()
+{
+
+  local localSTRINGVAR localSTRING tok
+  if [ "$1" != "" ]; then
+    eval localSTRINGVAR="\$$1"
+    localSTRING=""
+    for tok in $localSTRINGVAR; do
+      if `is_not_substring_of  " $tok " " $localSTRING "`; then 
+        localSTRING="$localSTRING $tok"
+      fi
+    done
+    if [ "$localSTRING" != "" ]; then
+      localSTRINGVAR="$1=\"`echo $localSTRING`\""
+      eval "$localSTRINGVAR"
+      #export "$1"
+    fi
+    return $?
+  else
+    return 127
+  fi
+}
+#
+remove_duplicates_from_string_old()
+{
+
+  local STRINGVAR STRING DRV
+  if [ "$1" != "" ]; then
+    eval STRINGVAR="\$$1"
+    STRING=""
+    for DRV in $STRINGVAR; do
+      if `is_not_substring_of  " $DRV " " $STRING "`; then 
+        STRING="$STRING $DRV "
+      fi
+    done
+    if [ "$STRING" != "" ]; then
+      STRINGVAR="$1=\"`echo $STRING`\""
+      eval "$STRINGVAR"
+      #export "$1"
+    fi
+    return $?
+  else
+    return 127
+  fi
+}
+#
+remove_from_string()
+{
+  local STRINGVAR STRING DRV RMVAR
+  if [ "$1" != "" ]; then 
+    eval RMVAR="\$$1"
+  else
+    return 127
+  fi
+  if [ "$2" != "" ]; then
+    eval STRINGVAR="\$$2"
+    STRING=""
+    for DRV in $STRINGVAR; do
+      if `is_not_substring_of  "$DRV " "$RMVAR "`; then 
+        STRING="$STRING $DRV "
+      fi
+    done
+    if [ "$STRING" != "" ]; then
+      STRINGVAR="$2=\" $STRING \""
+      eval "$STRINGVAR"
+    fi
+    return $?
+  else
+    return 127
+  fi
+}
+#
+get_partuuids()
+{
+  local DISK BLOCKDEVICES DISKID PARTUUID BYTE1 BYTE2
+  BLOCKDEVICES=""
+  #for DISK in `/bin/busybox ls -1d /sys/block/sd* 2>/dev/null` `/bin/busybox ls -1d /sys/block/hd* 2>/dev/null` `/bin/busybox ls -1d /sys/block/mmcblk* 2>/dev/null` ; do
+  for DISK in `/bin/busybox ls -1d /sys/block/* 2>/dev/null` ; do
+     BLOCKDEVICES="$BLOCKDEVICES `/bin/busybox basename "$DISK" 2>/dev/null` "
+  done
+  DISKID=""
+  for DISK in $BLOCKDEVICES; do
+     PARTUUID=""
+     # extract the partuuid information from partition table
+     DISKID=`/bin/busybox dd if=/dev/$DISK bs=1 count=4  skip=440 2>/dev/null | /bin/busybox hexdump  2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`
+     if [ $? -eq 0 -a "$DISKID" != "" ]; then
+       BYTE1=${DISKID:8:4}
+       BYTE2=${DISKID:13:4}
+       PARTUUID="$BYTE2$BYTE1"       
+       # reorder the words containing the partuuid 
+       #BYTE1=`echo $DISKID | /bin/busybox cut -f3 -d" " 2>/dev/null`
+       #BYTE2=`echo $DISKID | /bin/busybox cut -f2 -d" " 2>/dev/null`
+       #PARTUUID="$BYTE1$BYTE2"
+     fi
+     echo "$DISK|$PARTUUID"
+  done
+}
+#
+get_blockdev_from_partuuid()
+{
+  if [ "$1" != "" ]; then
+    local SYSBLK DISK BLOCKDEVICES DISKID DISKPNUM DISKPARTUUID PUUID BYTE1 BYTE2
+    DISKPARTUUID="$1"
+    DISKPNUM=$(( ${DISKPARTUUID#*-} ))
+    DISKPARTUUID=${DISKPARTUUID//-*}
+    BLOCKDEVICES=""
+    SYSBLK=""
+    SYSBLK=$(/bin/busybox ls -1d /sys/block/* 2>/dev/null)
+    for DISK in $SYSBLK ; do
+       BLOCKDEVICES="$BLOCKDEVICES ${DISK#/sys/block/} "
+    done
+    DISKID=""
+    for DISK in $BLOCKDEVICES; do
+       # extract the partuuid information from partition table
+       DISKID=$(/bin/busybox dd if=/dev/$DISK bs=1 count=4  skip=440 2>/dev/null | /bin/busybox hexdump  2>/dev/null) # | /bin/busybox tr "\n" " " 2>/dev/null`
+       if [ $? -eq 0 -a "$DISKID" != "" ]; then
+         PUUID=""
+         # reorder the words containing the partuuid 
+         BYTE1=${DISKID:8:4}
+         BYTE2=${DISKID:13:4}
+         PUUID="$BYTE2$BYTE1"
+         #BYTE1=`echo $DISKID | /bin/busybox cut -f3 -d " " 2>/dev/null`
+         #BYTE2=`echo $DISKID | /bin/busybox cut -f2 -d " " 2>/dev/null`
+         #PUUID="$BYTE1$BYTE2"
+         if [ "$PUUID" = "$DISKPARTUUID" ]; then
+           echo "/dev/$DISK$DISKPNUM"
+           return 0
+         fi
+       fi
+    done
+    if [ "$DISKID" = "" ]; then
+       echo ""
+       return 1
+    fi
+  else
+    echo ""
+    return 1
+  fi
+}
+#
+get_partuuid_from_blockdev()
+{
+  if [ "$1" != "" ]; then
+    local SYSBLK DISK DISKID DISKPNUM DISKPARTUUID PUUID BYTE1 BYTE2
+    DISKPARTUUID=""
+    SYSBLK="$1"
+    if [ -e $SYSBLK ]; then
+      DISK=${SYSBLK#/dev/}
+      [ "$DISK" = "$SYSBLK" ] && DISK=${SYSBLK#/sys/block/}
+      DISKPNUM=$(echo $DISK | /bin/busybox tr -d [:alpha:] 2>/dev/null)  #( ${DISKPARTUUID#*-} )
+      DISK=${DISK//$DISKPNUM}
+      # extract the partuuid information from partition table
+      if `is_substring_of "$DISK " "sr scd "`; then
+         DISK="$DISK$DISKPNUM"
+         DISKPNUM=""
+      fi
+      # DISKLABEL are the 32 bytes from : dd if=/dev/sr0 bs=1 skip=32808 count=32
+      # PARTUUIDs are hex numbers of certain partitions: MS-DOS Partition tables
+      DISKID=$(/bin/busybox dd if=/dev/$DISK bs=1 count=4  skip=440 2>/dev/null | /bin/busybox hexdump  2>/dev/null)
+      if [ $? -eq 0 -a "$DISKID" != "" ]; then
+        PUUID=""
+        # reorder the words containing the partuuid 
+        BYTE1=${DISKID:8:4}
+        BYTE2=${DISKID:13:4}
+        PUUID="$BYTE2$BYTE1"
+        if [ "$PUUID" != "" ]; then
+          if [ "$DISKPNUM" != "" ]; then
+            if [ $DISKPNUM -lt 10 ]; then 
+              US="-0"
+            else
+              US="-"
+            fi
+          else
+            US=""
+          fi
+          echo "$PUUID$US$DISKPNUM"
+          return 0
+        else
+          echo ""
+          return 1
+        fi
+      fi
+      if [ "$DISKID" = "" ]; then
+        echo ""
+        return 1
+      fi
+    else
+      echo ""
+      return 1
+    fi
+  else
+    echo ""
+    return 1
+  fi
+}
+#
+get_label_from_optical_blockdevice()
+{
+  if [ "$1" != "" ]; then
+    local SYSBLK DISK DISKID DISKLBL DISKPNUM DISKPARTUUID PUUID BYTE1 BYTE2
+    DISKPARTUUID=""
+    SYSBLK="$1"
+    if [ -e $SYSBLK ]; then
+      DISK=${SYSBLK#/dev/}
+      [ "$DISK" = "$SYSBLK" ] && DISK=${SYSBLK#/sys/block/}
+      DISKPNUM=$(echo $DISK | /bin/busybox tr -d [:alpha:] 2>/dev/null)  #( ${DISKPARTUUID#*-} ))
+      DISK=${DISK//$DISKPNUM}
+      # extract the partuuid information from partition table
+      if `is_substring_of "$DISK " "sr scd "`; then
+         DISK="$DISK$DISKPNUM"
+         DISKPNUM=""
+      fi
+      DISKLBL=$(/bin/busybox dd if=/dev/$DISK bs=1 skip=36904 count=32 2>/dev/null)
+      [ "$DISKLBL" != "" ] || DISKLBL=$(/bin/busybox dd if=/dev/$DISK bs=1 skip=34856 count=32 2>/dev/null)
+      [ "$DISKLBL" != "" ] || DISKLBL=$(/bin/busybox dd if=/dev/$DISK bs=1 skip=32808 count=32 2>/dev/null)
+      # DISKLABEL are the 32 bytes from : dd if=/dev/sr0 bs=1 skip=32808 count=32
+      # PARTUUIDs are hex numbers of certain partitions: MS-DOS Partition tables
+      DISKID=$(/bin/busybox dd if=/dev/$DISK bs=1 count=4  skip=440 2>/dev/null | /bin/busybox hexdump  2>/dev/null)
+      if [ $? -eq 0 -a "$DISKID" != "" ]; then
+        PUUID=""
+        # reorder the words containing the partuuid
+        BYTE1=${DISKID:8:4}
+        BYTE2=${DISKID:13:4}
+        PUUID="$BYTE2$BYTE1"
+        if [ "$PUUID" != "" ]; then
+          if [ "$DISKPNUM" != "" ]; then
+            if [ $DISKPNUM -lt 10 ]; then
+              US="-0"
+            else
+              US="-"
+            fi
+          else
+            US=""
+          fi
+          echo "$PUUID$US$DISKPNUM"
+          return 0
+        else
+          echo ""
+          return 1
+        fi
+      fi
+      if [ "$DISKLBL" != "" ]; then
+        export LABEL="$DISKLBL"
+      fi
+      if [ "$DISKID" = "" ]; then
+        echo ""
+        return 1
+      fi
+    else
+      echo ""
+      return 1
+    fi
+  else
+    echo ""
+    return 1
+  fi
+}
+#
+is_accessible_blockdevice()
+{
+  
+  local DEVTREE RDEV SYSBLK rootdev sysblkdev sysdev dev PART
+  rootdev=""
+  sysblkdev=""
+  sysdev=""
+  RDEV=""
+  if [ "$1" != "" ]; then
+    RDEV="$1"
+  else
+    return 127
+  fi  
+  sysblkdev="$1"
+  dev=""
+  SYSBLK="$(/bin/busybox basename $sysblkdev 2>/dev/null)"
+  SYSBLKDEV1=""
+  SYSBLKDEV2=""
+  SYSBLKDEV1=$(/bin/busybox ls -1d /sys/block/$SYSBLK 2>/dev/null)
+  SYSBLKDEV2=$(/bin/busybox ls -1d /sys/block/*/$SYSBLK 2>/dev/null)
+  if [ "$SYSBLKDEV1" != "" -o "$SYSBLKDEV2" != "" ]; then
+    if [ "$(/bin/busybox ls -1 "$RDEV" 2>/dev/null)" = "$RDEV" ]; then
+     rootdev=found
+    fi
+    if [ -e $sysblkdev ]; then
+     sysdev=found
+    fi
+  else
+    return 1
+  fi
+  PART=""
+  RC=5
+  if [ "$sysdev" != "" -a "$rootdev" != ""  ]; then
+    # can I read from the required device?
+    PART=$(/bin/busybox dd if=$sysblkdev  bs=512 count=8  skip=0 2>/dev/null)
+    RC=$?
+    if [ "$PART" != "" ]; then 
+      if [ $RC -ne 0 ]; then
+        echoconsole "[ $0 ]:" "Error in reading from blockdevice '$1' : '$RC'"
+      fi
+      return 0
+    else
+      return 1
+    fi
+  else 
+    return 1
+  fi
+}
+#
+#
+LABELCONTAINER=""
+BLOCKDISKS=""
+BLOCKDEVS=""
+label=""
+LABEL=""
+UUID=""
+LABEL_sda1=""
+LABEL_sda2=""
+LABEL_sda3=""
+LABEL_sda4=""
+LABEL_sdb1=""
+LABEL_sdb2=""
+LABEL_sdb3=""
+LABEL_sdb4=""
+LABEL_sdc1=""
+LABEL_sdc2=""
+LABEL_sdc3=""
+LABEL_sdc4=""
+LABEL_sdd1=""
+LABEL_sdd2=""
+LABEL_sdd3=""
+LABEL_sdd4=""
+LABEL_sde1=""
+LABEL_sde2=""
+LABEL_sde3=""
+LABEL_sde4=""
+LABEL_sdf1=""
+LABEL_sdf2=""
+LABEL_sdf3=""
+LABEL_sdf4=""
+LABEL_sdg1=""
+LABEL_sdg2=""
+LABEL_sdg3=""
+LABEL_sdg4=""
+LABEL_sdh1=""
+LABEL_sdh2=""
+LABEL_sdh3=""
+LABEL_sdh4=""
+LABEL_sdi1=""
+LABEL_sdi2=""
+LABEL_sdi3=""
+LABEL_sdi4=""
+LABEL_sdj1=""
+LABEL_sdj2=""
+LABEL_sdj3=""
+LABEL_sdj4=""
+LABEL_sdk1=""
+LABEL_sdk2=""
+LABEL_sdk3=""
+LABEL_sdk4=""
+PARTUUID_sda1=""
+PARTUUID_sda2=""
+PARTUUID_sda3=""
+PARTUUID_sda4=""
+PARTUUID_sdb1=""
+PARTUUID_sdb2=""
+PARTUUID_sdb3=""
+PARTUUID_sdb4=""
+PARTUUID_sdc1=""
+PARTUUID_sdc2=""
+PARTUUID_sdc3=""
+PARTUUID_sdc4=""
+PARTUUID_sdd1=""
+PARTUUID_sdd2=""
+PARTUUID_sdd3=""
+PARTUUID_sdd4=""
+PARTUUID_sde1=""
+PARTUUID_sde2=""
+PARTUUID_sde3=""
+PARTUUID_sde4=""
+PUUID_sdf1=""
+PUUID_sdf2=""
+PUUID_sdf3=""
+PUUID_sdf4=""
+PUUID_sdg1=""
+PUUID_sdg2=""
+PUUID_sdg3=""
+PUUID_sdg4=""
+PUUID_sdh1=""
+PUUID_sdh2=""
+PUUID_sdh3=""
+PUUID_sdh4=""
+PUUID_sdi1=""
+PUUID_sdi2=""
+PUUID_sdi3=""
+PUUID_sdi4=""
+PUUID_sdj1=""
+PUUID_sdj2=""
+PUUID_sdj3=""
+PUUID_sdj4=""
+PUUID_sdk1=""
+PUUID_sdk2=""
+PUUID_sdk3=""
+PUUID_sdk4=""
+PARTUUID=""
+LABELDD=""
+SECTSIZE=""
+STARTSECT=""
+ENDSECT=""
+FS=""
+
+read_fdiskline()
+{
+  FS=""
+  STARTSECT=""
+  if [ "$2" = "*" ]; then shift; fi
+  export STARTSECT="$2"
+  export FS="$5"
+}
+
+assign_array_variable()
+{
+  local TOK index var value PREF
+  PREF="$1"
+  index="$2"
+  value="$3"
+  var="${PREF}${index}"
+  TOK="$var=\"$value\""
+  eval $TOK
+  export $var
+}
+#
+display_array_variable()
+{
+  local TOK index value PREF
+  PREF="$1"
+  index="$2"
+  TOK="${PREF}${index}"
+  TOK="value=\$$TOK"
+  eval $TOK
+  echo "$value"
+
+}
+#
+devicenumber()
+{
+  # extract devicenumber from a Linux device path string 
+  # this has become necessary since the GPT specification
+  local i LEN PLACE VAR DIGIT LASTDIGIT NUMBER
+  VAR="$1"
+  LEN=${#VAR}
+  #echo LEN $LEN
+  #i=1
+  PLACE=0
+  LASTNUMBER=""
+  NUMBER=""
+  DIGIT=""
+  for i in `seq 1 $LEN`; do
+    PLACE=$(( $LEN - $i ))
+    NUMBER=${VAR:$PLACE:$i}
+    DIGIT=${VAR:$PLACE:1}
+    #echo "DIGIT=$DIGIT"
+    if `is_char_not_digit $DIGIT`; then 
+      echo "$LASTNUMBER"
+      #break
+      return 0
+    fi 
+    LASTNUMBER=$NUMBER
+  done
+  echo ""
+  return 1
+}
+#
+BLKDEV=""
+BLKDEVPART=""
+MAINDEVPATH=""
+MAINDEV=""
+PNUM=""
+#
+assign_devpath_string()
+{
+  BLKDEV=""
+  BLKDEVPART=""
+  local string sysblkdev bdevs
+  string="$1"
+  bdevs=""
+  BLKDEVPART=`/bin/busybox basename $string 2>/dev/null`
+  MAINDEVPATH="`/bin/busybox dirname $string 2>/dev/null`"
+  MAINDEV=""
+  sysblkdev=""
+  for sysblkdev in $(/bin/busybox ls -1 /sys/block 2>/dev/null); do
+    case $BLKDEVPART in
+      *$sysblkdev*)
+        bdevs=$sysblkdev
+      ;;
+    esac
+  done
+  if [ "$bdevs" != "" ]; then 
+    if [ "$bdevs" != "$BLKDEVPART" ]; then 
+      BLKDEV="$bdevs"
+      PNUM=`last_digits_of_string "$BLKDEVPART"`
+    else
+      BLKDEV="$BLKDEVPART"
+      BLKDEVPART=""  
+      PNUM=""
+    fi
+    MAINDEV="${MAINDEVPATH}/${BLKDEV}"
+    export BLKDEVPART BLKDEV PNUM MAINDEV MAINDEVPATH
+    return 0
+  else
+    return 1
+  fi
+}
+#
+assign_filesystem_parameter()
+{
+  for line in $DOSTABLE; do
+    FS=${line:8:2}
+    if [ "$FS" != "00" ]; then 
+      break
+    fi
+  done
+  export FS
+}
+#
+assign_specified_partition_parameters()
+{
+
+  local PARTDEV FIRSTSECT LASTSECT FILESYS DEVICE BLOCKDEV LABELCONTAINER line1 line2 line3 SKIPPER
+  local LABEL UUID FSTYPE LABELDD FSMAGIC FSSUBTYPE EXPORTVARIABLES
+  DEVICE="$1" 
+  [ "$DEVICE" != "" ] || return  127
+  FIRSTSECT="$2"
+  SKIPPER=0
+  [ "BLKDEV" != "" ] || assign_devpath_string $DEVICE
+  
+  if [ "$BLKDEV" = "$BLKDEVPART" ]; then 
+     SKIPPER=$FIRSTSECT
+  fi
+  LASTSECT="$3"
+  FILESYS="$4"
+  [ "$FILESYS" != "" ] || FILESYS="$FS"
+  [ "$FILESYS" != "" ] || 
+  {
+    echo "Type of Filesystem not found or specified for "
+    echo "Partition '$DEVICE' at sectors '$FIRSTSECT' through '$LASTSECT' "
+    echo "Abending .... "
+    return 127
+  } 
+  UUID=""
+  FSTYPE=""
+  FSSUBTYPE=""
+  LABELDD=""
+  LABELCONTAINER=""
+  line1=""
+  line2=""
+  line3=""
+  case $FILESYS in
+    83|ee|ef)
+        LABELCONTAINER=`/bin/busybox dd if=$DEVICE bs=$SECTSIZE skip=$SKIPPER count=4 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+        
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000430" 2>/dev/null)
+        FSMAGIC="$(echo "${line1:35:5}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+        if [ "$FSMAGIC" = "53 ef" ]; then 
+          FSSUBTYPE="extfs"
+          #export FSSUBTYPE; 
+          line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000500" 2>/dev/null)
+          FSMAGIC="${line2:47:5}" #| /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+          if [ "$FSMAGIC" = "0a f3" ]; then 
+            FSTYPE="ext4"
+            #export FSTYPE; 
+	  else
+	    FSTYPE=$FSSUBTYPE
+          fi
+        fi
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000400" 2>/dev/null)
+        FSMAGIC="$(echo "${line1:10:11}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+        if [ "$FSMAGIC" = "10 20 f5 f2" ]; then 
+          FSTYPE="f2fs"
+          #export FSSUBTYPE; 
+        fi
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000000" 2>/dev/null)
+        FSMAGIC="$(echo "${line1:10:11}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+        if [ "$FSMAGIC" = "58 46 53 42" ]; then # XFSB 
+          FSTYPE="xfs"
+          #export FSSUBTYPE; 
+        fi
+        case "$FSTYPE" in
+	  *ext*)
+	    line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000470" 2>/dev/null)
+	    line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000480" 2>/dev/null)
+	    LABELDD="$(echo "${line1:69:8}${line2:61:8}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+	    line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000460" 2>/dev/null)
+	    line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000470" 2>/dev/null)
+	    UUID="${line1:35:23}${line2:10:23}"
+	  ;;
+	  *f2fs*)
+	    line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000470" 2>/dev/null) 
+	    line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000480" 2>/dev/null) 
+	    line3=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000490" 2>/dev/null) 
+	    LABELDD="$(echo "${line1:73:4}${line2:61:16}${line3:61:16}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+	    line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000460" 2>/dev/null) 
+	    line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000470" 2>/dev/null) 
+	    UUID="${line1:47:12}${line2:10:36}"
+	  ;;
+	  *xfs*)
+	    line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000060" 2>/dev/null) 
+	    line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000070" 2>/dev/null) 
+	    LABELDD="$(echo "${line1:73:4}${line2:61:16}${line3:61:16}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+	    line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000240" 2>/dev/null) 
+	    UUID="${line1:10:48} #| /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+	  ;;
+	esac 
+        echo "UUID=$UUID"
+	UUID="$(echo ${UUID} | /bin/busybox tr -d " " 2>/dev/null)"
+	UUID="${UUID:0:8}-${UUID:8:4}-${UUID:12:4}-${UUID:16:4}-${UUID:20:12}"
+    ;;
+    5|f|0f|85|f2)  # extended partitions
+      LABELDD=ExtdXNonBootable
+    ;;
+    7|07)
+        #LABELCONTAINER=`/bin/busybox dd if=$DEVICE bs=$SECTSIZE skip=$SKIPPER count=4 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+        LABELCONTAINER=`/bin/busybox dd if=$DEVICE bs=4096 skip=0 count=8 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+        #echo "$LABELCONTAINER"
+        #echo "fs type '$FS'"
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox cut -c 62-77  2>/dev/null | /bin/busybox tr -d ".\n " 2>/dev/null)
+        if `is_substring_of "NTFS" "$line1" ` || `is_substring_of "NTLDR" "$line1"`; then 
+           FSTYPE=ntfs
+        else
+           echo "strange first sector of ntfs-type partition, no NTLDR, no NTFS detected!"
+        fi
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000000" 2>/dev/null)
+        FSMAGIC=${line1:11:8}         
+        if [ "$FSMAGIC" = "eb 52" ]; then 
+          FSSUBTYPE="ntfs"
+          #export FSSUBTYPE; 
+        fi
+        #FSTYPE=ntfs
+        #line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00004d80" 2>/dev/null) 
+        #line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00004d90" 2>/dev/null) 
+        #LABELDD="$(echo "${line1:61:16}${line2:61:5}" | /bin/busybox tr -d " \.\`\+\\" 2>/dev/null)"
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00004d10" 2>/dev/null) 
+        line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00004d20" 2>/dev/null) 
+        LABELDD="$(echo "${line1:67:9}${line2:61:14}" | /bin/busybox tr -d " \.\`\+\\" 2>/dev/null)"
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000040" 2>/dev/null) 
+        UUID="${line1:35:25}"
+        TOK=""
+        for id in $UUID; do
+          TOK="$id$TOK"
+        done
+        UUID="$TOK"
+        UUID="$(echo ${UUID} | /bin/busybox tr -d " " 2>/dev/null)"
+    ;;
+    c|0c|0b|b)
+        LABELCONTAINER=`/bin/busybox dd if=$DEVICE bs=$SECTSIZE skip=$SKIPPER count=4 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+        #echo "$LABELCONTAINER"
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000000" 2>/dev/null)
+        FSMAGIC=${line1:11:8}         
+        if [ "$FSMAGIC" = "eb 58" ]; then 
+          FSSUBTYPE="vfat"
+          #export FSSUBTYPE; 
+        fi
+        #echo "$0 dev $DEVICE with fstype '$FS'"
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000040" 2>/dev/null) 
+        line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000050" 2>/dev/null) 
+        LABELDD="$(echo "${line1:68:8}${line2:61:2}" | /bin/busybox tr -d " \.\`\+\\" 2>/dev/null)"
+        UUID="${line1:19:11}" #| /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+        TOK=""
+        for id in $UUID; do
+          TOK="$id$TOK"
+        done
+        UUID="$TOK"
+        UUID="$(echo ${UUID} | /bin/busybox tr -d " " 2>/dev/null)"
+        UUID="${UUID:0:4}-${UUID:4:4}"
+        #echo "UUID=$UUID"
+        #export UUID
+        FSMAGIC="${line2:63:5}"  #| /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+        if [ "$FSMAGIC" = "FAT32" ]; then 
+          FSTYPE="vfat" 
+          #export FSTYPE
+        fi
+    ;;
+    6|4)# FAT16
+        LABELCONTAINER=`/bin/busybox dd if=$DEVICE bs=$SECTSIZE skip=$SKIPPER count=4 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+        #echo "$LABELCONTAINER"
+        #echo "fs type '$FS'"
+        line1=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000020" 2>/dev/null) 
+        line2=$(echo "$LABELCONTAINER" |  /bin/busybox grep "00000030" 2>/dev/null) 
+        LABELDD="$(echo "${line1:71:6}${line2:61:6}" | /bin/busybox tr -d " \.\`\+\\" 2>/dev/null)"
+        FSTYPE="fat16"
+    ;;
+    11|14|16|17|1b|1c|1e|27|84)  # hidden partitions
+      LABELDD=HiddenXnoaccess
+    ;;
+    82|18|b8|16|17|1b|1c|1e|27|84)  # swap partitions
+      LABELDD=SwapXnoaccess
+    ;;
+    8|9)  # extended partitions
+      LABELDD=AIXorAIXBootable
+    ;;
+    5|f|0f|85|f2)  # extended partitions
+      LABELDD=ExtdXNonBootable
+    ;;
+    4d|4e|4f)  # extended partitions
+      LABELDD=QNX4xUpTo3rdLVL
+    ;;
+    f2)  # extended partitions
+      LABELDD=DOS2ndary
+    ;;
+    e4|f1|f4)  # extended partitions
+      LABELDD=DOS2ndary
+    ;;
+    80|81)  # extended partitions
+      LABELDD=Minix
+    ;;
+    a|0a)  # extended partitions
+      LABELDD=OS2BootMan
+    ;;
+  esac
+  #echo "$LABELCONTAINER"
+  #export LABELDD
+  LABEL="$LABELDD"
+  STARTSECTOR=$FIRSTSECT
+  ENDSECTOR=$LASTSECT
+  #echo "[ $0 ]: $DEVICE: SSIZE=\"$SECTSIZE\" STARTS=\"$STARTSECTOR\" ENDS=\"$ENDSECTOR\" TYPE=\"$FSTYPE\" LABEL=\"$LABEL\" PUUID=\"$PARTUUID\" UUID=\"$UUID\" PTTYPE=\"$PTTYPE\" "
+  #echo "FilesystemLabel: $LABEL , partuuid $PARTUUID"
+  EXPORTVARIABLES="LABEL UUID FSTYPE SECTSIZE STARTSECTOR ENDSECTOR PTTYPE"
+  local varcontent=""
+  local var=""
+  local us="_"
+  for var in $EXPORTVARIABLES; do
+    #TOK="varcontent=\$$var"
+    eval "varcontent=\$$var"
+    #echo "variable : $var and content $varcontent /partition: $PARTNUM"
+    if [ "$varcontent" != "" ]; then
+      assign_array_variable "${var}${us}" "$BLKDEVPART" "$varcontent"   
+    fi
+    #if [ "$varcontent" != "" ]; then
+    #  TOK="$var$us$BLOCKDEV$PARTNUM=${varcontent}"
+      #echo "evaluating : $TOK"
+    #  eval "$TOK"
+      #echo "exporting: $var$us$BLOCKDEV$PARTNUM   $varcontent"
+    #  export "$var$us$BLOCKDEV$PARTNUM"
+    #fi
+  done
+  LABELCONTAINER=""
+
+}
+#
+assign_msdos_partitiontable()
+{
+  local DEV P PARTDEV PART fdiskline DISKID OLDMAINDEV line1 line2 TOK 
+  local LABELCONTAINER PART_1 PART_2 PART_3 PART_4 var
+  PARTDEV=""
+  PARTDEVS=""
+  DEV="$1"
+  STARTSECT=""
+  LENSECT=""
+  ENDSECT=""
+  line1=""
+  line2=""
+  TOK=""
+  #PARTDEV="`/bin/busybox basename $MAINDEV 2>/dev/null`"
+  if ! `assign_devpath_string $DEV`; then
+    return 127
+  fi
+  PARTDEV="$BLKDEV"
+  P=1
+  export PTTYPE=dos
+  TOK=""
+  TOK="PTTYPE_$PARTDEV=$PTTYPE"
+  eval "$TOK"
+  export "PTTYPE_$PARTDEV"
+  count=1
+  for partdev in `/bin/busybox ls -1 $MAINDEV* 2>/dev/null`; do
+    TOK="PART_${count}=$partdev"
+    eval $TOK
+    count=$(( $count + 1 ))
+  done
+  # DOSTABLE 
+  #echo DOSTABLE  $DOSTABLE
+  for line in $DOSTABLE; do
+    if [ "$line" != "00000000000000000000000000000000" ]; then
+      TOK=""
+      for i in 16 18 20 22; do
+         TOK="${line:$i:2}$TOK"
+      done
+      TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+      STARTSECT=$(( 0x$TOK ))
+      TOK=""
+      for i in 24 26 28 30; do
+         TOK="${line:$i:2}$TOK"
+      done
+      TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+      LENSECT=$(( 0x$TOK ))
+      ENDSECT=$(( $STARTSECT + $LENSECT -1 ))
+      #echo "Startsector of partition $PNUM : $STARTSECT"
+      #echo "Endsector   of partition $PNUM : $ENDSECT"
+      FS=${line:8:2}
+      var="PART_${P}"
+      TOK="PARTDEV=\$$var"
+      eval "$TOK"
+      assign_specified_partition_parameters "$PARTDEV" "$STARTSECT" "$ENDSECT" "$FS"
+      TOK="PARTUUID_${PARTDEV}=${PUUID}-0${PNUM}"
+      eval "$TOK"
+      export "PARTUUID_${PARTDEV}"
+    fi
+    #TOK=""
+    P=$(( $P + 1 ))
+  done
+  
+  PARTUUID=$PUUID
+  TOK="PARTUUID_$PARTDEV=\"${PUUID}\""
+  eval "$TOK"
+  export "PARTUUID_$PARTDEV" PARTUUID
+
+}
+#
+assign_msdos_partition()
+{
+  local DEV PARTDEV fdiskline DISKID line1 line2 TOK 
+  local counter
+  PARTDEV=""
+  PARTDEVS=""
+  DEV="$1"
+  STARTSECT=""
+  ENDSECT=""
+  line1=""
+  line2=""
+  TOK=""
+  PARTDEV="$BLKDEVPART"
+  #PNUM=$(echo ${DEV} | /bin/busybox tr -d "\/[:alpha:]" 2>/dev/null)
+  export PTTYPE=dos
+  TOK="PTTYPE_"
+  TOK="${TOK}${PARTDEV}"
+  TOK="$TOK=\"${PTTYPE}\""
+  eval "$TOK"
+  #export "PTTYPE_$PARTDEV"
+  export $TOK
+  counter=0
+  for line in $DOSTABLE; do
+    #if [ "$line" != "00000000000000000000000000000000" ]; then
+      counter=$(( $counter + 1 ))
+    #else
+    # continue
+    #fi
+    if [ $counter -eq $PNUM ]; then
+      TOK=""
+      for i in 16 18 20 22; do
+         TOK="${line:$i:2}$TOK"
+      done
+      TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+      STARTSECT=$(( 0x$TOK ))
+      TOK=""
+      for i in 24 26 28 30; do
+         TOK="${line:$i:2}$TOK"
+      done
+      TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+      ENDSECT=$(( 0x$TOK ))
+      #echo "Startsector of partition $PNUM : $STARTSECT"
+      #echo "Endsector   of partition $PNUM : $ENDSECT"
+      FS=${line:8:2}
+      export FS
+      echo "FS=$FS"
+      #set -x
+      assign_specified_partition_parameters "$DEV" "$STARTSECT" "$ENDSECT" "$FS"
+      #set  +x
+      TOK="PARTUUID_"
+      TOK="$TOK$PARTDEV=${PUUID}-0${PNUM}"
+      #echo "TOK=$TOK"
+      eval "$TOK"
+      export $TOK
+      #export "PARTUUID_$PARTDEV"
+      break
+    fi
+  done
+  
+  #TOK="PARTUUID_$PARTDEV=\"${PUUID}\""
+  #eval "$TOK"
+  #export "PARTUUID_$PARTDEV"
+
+}
+#
+assign_gpt_partuuid()
+{
+ local VAR STRING RETVAR tok byte0 byte1 byte2 byte3
+  if [ "$1" != "" ]; then
+    VAR="$1"
+    #echo "$VAR"
+    STRING="${VAR:0:8}"
+    RETVAR=""
+    for i in 0 2 4 6; do
+      RETVAR="${STRING:$i:2}$RETVAR"
+    done
+    #echo " $RETVAR"
+    RETVAR="$RETVAR-${VAR:10:2}"
+    RETVAR="$RETVAR${VAR:8:2}"
+    #echo " $RETVAR"
+    RETVAR="$RETVAR-${VAR:14:2}"
+    RETVAR="$RETVAR${VAR:12:2}"
+    #echo " $RETVAR"
+    RETVAR="$RETVAR-${VAR:16:2}"
+    RETVAR="$RETVAR${VAR:18:2}"
+    #echo " $RETVAR"
+    RETVAR="$RETVAR-${VAR:20:12}"
+    echo "$RETVAR"
+    
+    export PARTUUID="$RETVAR"
+    return 0
+  else
+    return 127
+  fi
+}
+#
+#
+assign_guuid_partitiontable()
+{
+  local DEVSZ PNUM PARTDEV DEV line1 line2 TOK PTABLE GPTHDRCONTAINER
+  #local SSBYTE0 SSBYTE1 SSBYTE2 SSBYTE3
+  #local ESBYTE0 ESBYTE1 ESBYTE2 ESBYTE3 
+  local line
+  DEV="$1"
+  #PARTDEV=$(/bin/busybox basename $DEV 2>/dev/null)
+  PARTDEV=$BLKDEV
+  #PNUM=""
+  #PNUM=`last_digits_of_string $PARTDEV`
+  #TOK=$(echo $PARTDEV | /bin/busybox tr -d "[:digit:]" 2>/dev/null)
+  #if [ "$PNUM" != "" ]; then
+  #  echo "[ $0 ] : You can specify only the device path of an entire blockdevice"
+  #  echo "[ $0 ] : no particular partition ! '$MAINDEV' void."
+  #  return 255
+  #fi
+  DEVSZ=`/bin/busybox blockdev --getsz $DEV 2>/dev/null`
+  STARTSECT=0
+  ENDSECT=0
+  line1=""
+  line2=""
+  line=""
+  TOK=""
+  LABELDD=""
+  line1=$(echo $DOSTABLE | /bin/busybox cut -f1   -d " " 2>/dev/null)
+  line2=$(echo $DOSTABLE | /bin/busybox cut -f2   -d " " 2>/dev/null)
+  #echo $line1
+  #echo $line2
+  if [ "$line1" != "" -a  "$line2" = "00000000000000000000000000000000" ]; then
+      TOK=""
+      for i in 16 18 20 22; do
+         TOK="${line1:$i:2}$TOK"
+         #echo $TOK $i ${line1:$i:2}
+      done
+      TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+      #echo "startsect $TOK"
+      STARTSECT=$(( 0x$TOK ))
+      TOK=""
+      for i in 24 26 28 30; do
+         TOK="${line1:$i:2}$TOK"
+         #echo $TOK
+      done
+      TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+      #echo "endsect $TOK"
+      ENDSECT=$(( 0x$TOK ))
+      #echo "Startsector of partition $PNUM : $STARTSECT"
+      #echo "Endsector   of partition $PNUM : $ENDSECT"
+    if [ $DEVSZ -ne $(( $ENDSECT + 1 )) ]; then 
+      echo "Device size $DEVSZ for $DEV is not matching with endsector number of GPT !"
+      echo "abending...."
+      return 255
+    fi
+  else
+     echo "Partition has Filesystem '$FS' but no valid MBR contents for a GPT !"
+      echo "abending...."
+    return 255
+  fi
+  #PTABLE=`/bin/busybox dd if=$MAINDEV bs=$SECTSIZE skip=0 count=128 2>/dev/null | /bin/busybox hexdump -C   2>/dev/null`
+  #line1=`echo "$PTABLE" | /bin/busybox hexdump -C   2>/dev/null`
+  #echo "$PTABLE"
+  # read the next sector after the startsector, that should contain the GPT-MBR
+  PTABLE=`/bin/busybox dd if=$MAINDEV bs=$SECTSIZE skip=$STARTSECT count=1 2>/dev/null | /bin/busybox hexdump -C   2>/dev/null`
+  #echo "$PTABLE"
+  line1=$(echo "$PTABLE" |  /bin/busybox grep "00000000" 2>/dev/null) 
+  LABELDD="$(echo "${line1:61:8}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  #echo $LABELDD
+  if [ "$LABELDD" != "EFI PART" ]; then 
+    echo "Partition has no valid GUUID Partition Table Descriptor !"
+    echo "Expected 'EFI PART' in the startsector referenced by MS-DOS Partition table"
+    export PTTYPE=""
+    echo "abending...."
+    return 255
+  else
+    export PTTYPE="gpt"
+    TOK=""
+    TOK="PTTYPE_$PARTDEV=\"$PTTYPE\""
+    eval "$TOK"
+    export "PTTYPE_$PARTDEV"
+  fi
+  LABELDD="$(echo "${line1:47:11}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  GPTHDRSIZE=""
+  for byte in $LABELDD; do
+    GPTHDRSIZE="$byte$GPTHDRSIZE"
+  done 
+  
+  GPTHDRSIZE=$(( 0x${GPTHDRSIZE} ))
+  export GPTHDRSIZE
+  #echo GPTHDRSIZE  $GPTHDRSIZE
+  line1=$(echo "$PTABLE" |  /bin/busybox grep "00000030" 2>/dev/null) 
+  line2=$(echo "$PTABLE" |  /bin/busybox grep "00000040" 2>/dev/null) 
+  LABELDD="$(echo "${line1:35:23} ${line2:10:23}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  #echo $LABELDD
+  PUUID="$(echo $LABELDD  | /bin/busybox tr -d " " 2>/dev/null)"
+  #echo $PUUID
+  PUUID=`assign_gpt_partuuid "$PUUID"`
+  #echo "first assigned puuid : $PUUID"
+  DISKUUID="$PUUID"
+  export DISKUUID
+  TOK=""
+  TOK="PARTUUID_$PARTDEV=\"$DISKUUID\""
+  eval "$TOK"
+  export "PARTUUID_$PARTDEV"
+  line2=$(echo "$PTABLE" |  /bin/busybox grep "00000050" 2>/dev/null) 
+  LABELDD="$(echo "${line2:10:12}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  #echo $LABELDD
+  TOK=""
+  for byte in $LABELDD; do
+    TOK="$byte$TOK"
+  done
+  GPTSIZE=$(( 0x$TOK ))
+  #echo GPTSIZE $GPTSIZE
+  GPTHDRID="af 3d c6 0f 83 84 72 47  8e 79 3d 69 d8 47 7d e4"
+  EFIID="  ba 4b 00 a0 c9 3e c9 3b"
+  NILLINE="00000000  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|"
+  GPTHDRCONTAINER=""
+  start=2
+  counter=0
+  for cnt in `seq 0 127`; do 
+    GPTHDRCONTAINER=`/bin/busybox dd if=$DEV bs=$GPTSIZE skip=$(( $start + $cnt )) count=1 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+    line1=$(echo "$GPTHDRCONTAINER" |  /bin/busybox grep "00000000" 2>/dev/null)
+    #echo "no. ($cnt,$(( $start + $cnt )) partitionheader no. $counter at $(( $GPTSIZE * $(( $start + $cnt )) ))"
+    #echo "$GPTHDRCONTAINER"
+    if `is_substring_of "$GPTHDRID" "$line1"` || `is_substring_of "$EFIID" "$line1"`; then 
+     counter=$(( $counter + 1 ))
+     #echo "no. ($cnt,$(( $start + $cnt )) partitionheader no. $counter at $(( $GPTSIZE * $(( $start + $cnt )) ))"
+     #echo "$GPTHDRCONTAINER"
+     line2=$(echo "$GPTHDRCONTAINER" |  /bin/busybox grep "00000010" 2>/dev/null)
+     PUUID=${line2:10:48}
+     PUUID=$(echo $PUUID|/bin/busybox tr -d " " 2>/dev/null)
+     #echo "PARTUUID of $counter,$PNUM $PARTUUID"
+     PUUID=`assign_gpt_partuuid "$PUUID"`
+     TOK=""
+     TOK="PARTUUID_$PARTDEV$counter=\"$PUUID\""
+     eval "$TOK"
+     PARTUUID=$PUUID
+     export "PARTUUID_$PARTDEV$counter" PARTUUID
+     #echo "Partuuid='$PARTUUID'"
+     line2=$(echo "$GPTHDRCONTAINER" |  /bin/busybox grep "00000020" 2>/dev/null)
+     STARTLBA=${line2:10:23}
+     ENDLBA=${line2:35:23}
+     #echo "startlba='$STARTLBA'  endlba='$ENDLBA'"
+     TOK=""
+     for s in $STARTLBA; do
+       TOK="$s$TOK"
+     done
+     STARTLBA=$(( 0x$TOK ))
+     TOK=""
+     for e in $ENDLBA; do
+       TOK="$e$TOK"
+     done
+     ENDLBA=$(( 0x$TOK ))
+     #echo "startlba='$STARTLBA'  endlba='$ENDLBA'"
+     line2=$(echo "$GPTHDRCONTAINER" |  /bin/busybox grep "00000030" 2>/dev/null)
+     FLAG=${line2:10:13}
+     TOK=""
+     for s in $FLAG; do
+       TOK="$s$TOK"
+     done
+     FLAG=$(( 0x$TOK ))
+     case $FLAG in 
+       0)
+	  #echo "System partition (disk partitioning utilities must preserve the partition as is) $MAINDEV$counter"
+          assign_specified_partition_parameters  "$MAINDEV$counter" "$STARTLBA" "$ENDLBA" "$FS"
+       ;;
+       2)
+          #echo "EFI firmware should ignore the content of the partition and not try to read from it $MAINDEV$counter"
+	  :
+       ;;
+       4)
+          #echo "Legacy BIOS bootable (equivalent to active flag of the MBR partition table)  $MAINDEV$counter"
+          assign_specified_partition_parameters  "$MAINDEV$counter" "$STARTLBA" "$ENDLBA" "$FS"
+       ;;
+     esac    
+     #echo $FLAG
+     FLAG=${line2:24:13}
+     TOK=""
+     for s in $FLAG; do
+       TOK="$s$TOK"
+     done
+     FLAG=$(( 0x$TOK ))
+     case $FLAG in 
+        268435456)
+         	#echo "Read-only: This partition is flagged read-only "
+          assign_specified_partition_parameters  "$MAINDEV$counter" "$STARTLBA" "$ENDLBA" "$FS"
+       ;;
+       1073741824)
+          #echo ""
+          :
+       ;;
+       2147483648)
+          #echo "Hidden Flag: The partition does not appear for regular OS use."
+          assign_specified_partition_parameters  "$MAINDEV$counter" "$STARTLBA" "$ENDLBA" "$FS"
+       ;;
+     esac    
+     #echo $FLAG
+     
+    elif [ "$line1" = "$NILLINE" ]; then
+      # break scan anyway after 14 empty GTP-headers 
+      if [ $(( $cnt - $counter )) -gt 16 ]; then break; fi  
+    fi
+  done
+  #
+}
+#
+assign_guuid_partition_mainheader()
+{
+  local DEVSZ PARTDEV DEV PARTDEV0 STARTSECT SECTSIZE line1 line2 TOK PTABLE GPTHDRCONTAINER
+  DEV="$1"
+  #PARTDEV="$(/bin/busybox basename $DEV)"
+  #PARTDEV0=$PARTDEV
+  STARTSECT="$2"
+  SECTSIZE="$3"
+  DEVSZ="$4"
+  ENDSECT="$(( $DEVSZ - 1 ))"
+  PTABLE=`/bin/busybox dd if=$MAINDEV bs=$SECTSIZE count=1 skip=$STARTSECT  2>/dev/null | /bin/busybox hexdump -vC  2>/dev/null `
+  line1=$(echo "$PTABLE" |  /bin/busybox grep "00000000" 2>/dev/null) 
+  LABELDD="$(echo "${line1:61:8}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  #echo $LABELDD
+  if [ "$LABELDD" != "EFI PART" ]; then 
+    echo "Partition Table has no valid GUUID Partition Table Descriptor !"
+    echo "Expected 'EFI PART' in this examined startsector, referenced by MS-DOS Partition table"
+    export PTTYPE=""
+    echo "abending...."
+    return 255
+  else
+    export PTTYPE="gpt"
+    TOK=""
+    TOK="PTTYPE_$PARTDEV=\"$PTTYPE\""
+    eval "$TOK"
+    export "PTTYPE_$PARTDEV"
+    TOK=""
+    TOK="LABEL_$PARTDEV=\"EFI PART\""
+    eval "$TOK"
+    export "LABEL_$PARTDEV"
+  fi
+  LABELDD="$(echo "${line1:47:11}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  GPTHDRSIZE=""
+  for byte in $LABELDD; do
+    GPTHDRSIZE="$byte$GPTHDRSIZE"
+  done 
+  
+  GPTHDRSIZE=$(( 0x${GPTHDRSIZE} ))
+  export GPTHDRSIZE
+  #echo "headersize $GPTHDRSIZE"
+  line1=$(echo "$PTABLE" |  /bin/busybox grep "00000030" 2>/dev/null) 
+  line2=$(echo "$PTABLE" |  /bin/busybox grep "00000040" 2>/dev/null) 
+  #LABELDD="$(echo "${line1:35:23} ${line2:10:23}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  LABELDD="${line1:35:23} ${line2:10:23}"
+  #echo $LABELDD
+  PUUID="$(echo $LABELDD  | /bin/busybox tr -d " /\.\`\+\\" 2>/dev/null)"
+  #echo $PUUID
+  PUUID=`assign_gpt_partuuid "$PUUID"`
+  #echo "first assigned puuid : $PUUID"
+  DISKUUID="$PUUID"
+  export DISKUUID
+  TOK=""
+  TOK="PARTUUID_$BLKDEV=\"$DISKUUID\""
+  eval "$TOK"
+  export "PARTUUID_$BLKDEV"
+  TOK=""
+  TOK="UUID_$BLKDEV=\"\""
+  eval "$TOK"
+  export "UUID_$BLKDEV"
+  line2=$(echo "$PTABLE" |  /bin/busybox grep "00000050" 2>/dev/null) 
+  LABELDD="$(echo "${line2:10:12}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  #echo $LABELDD
+  TOK=""
+  for byte in $LABELDD; do
+    TOK="$byte$TOK"
+  done
+  GPTSIZE=$(( 0x$TOK ))
+  export GPTSIZE
+
+}
+#
+assign_guuid_partition()
+{
+  local DEVSZ PARTDEV PARTDEV0 DEV line1 line2 TOK PTABLE GPTHDRCONTAINER
+  #local SSBYTE0 SSBYTE1 SSBYTE2 SSBYTE3
+  #local ESBYTE0 ESBYTE1 ESBYTE2 ESBYTE3 
+  local line
+  DEV="$1"
+  #MAINDEV=$(echo $DEV | /bin/busybox tr -d [:digit:] 2>/dev/null) 
+  #PARTDEV=$(/bin/busybox basename $DEV 2>/dev/null)
+  DEVSZ=`/bin/busybox blockdev --getsz $MAINDEV 2>/dev/null`
+  #PARTDEV0=$(/bin/busybox basename $MAINDEV 2>/dev/null)
+  #PNUM=$(echo $DEV | /bin/busybox tr -d "\/[:alpha:]" 2>/dev/null) 
+  PARTDEV0=$BLKDEV
+  PARTDEV=$BLKDEVPART
+  STARTSECT=0
+  ENDSECT=0
+  line1=""
+  line2=""
+  line=""
+  TOK=""
+  LABELDD=""
+  line1=$(echo $DOSTABLE | /bin/busybox cut -f1   -d " " 2>/dev/null)
+  line2=$(echo $DOSTABLE | /bin/busybox cut -f2   -d " " 2>/dev/null)
+  #echo $line1
+  #echo $line2
+  if [ "$line1" != "" -a  "$line2" = "00000000000000000000000000000000" ]; then
+      TOK=""
+      for i in 16 18 20 22; do
+         TOK="${line1:$i:2}$TOK"
+         #echo $TOK $i ${line1:$i:2}
+      done
+      TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+      #echo "startsect $TOK"
+      STARTSECT=$(( 0x$TOK ))
+      TOK=""
+      for i in 24 26 28 30; do
+         TOK="${line1:$i:2}$TOK"
+         #echo $TOK
+      done
+      TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+      #echo "endsect $TOK"
+      ENDSECT=$(( 0x$TOK ))
+      #echo "Startsector of partition $PNUM : $STARTSECT"
+      #echo "Endsector   of partition $PNUM : $ENDSECT"
+    if [ $DEVSZ -ne $(( $ENDSECT + 1 )) ]; then 
+      echo "Device size $DEVSZ for $MAINDEV is not matching with endsector number of GPT !"
+      echo "abending...."
+      return 255
+    fi
+  else
+     echo "Partition has Filesystem '$FS' but no valid MBR contents for a GPT !"
+     echo "abending...."
+    return 255
+  fi
+  # read the next sector after the startsector, that should contain the GPT-MBR
+  PTABLE=`/bin/busybox dd if=$MAINDEV bs=$SECTSIZE skip=$STARTSECT count=1 2>/dev/null | /bin/busybox hexdump -C   2>/dev/null`
+  #line1=`echo "$PTABLE" | /bin/busybox hexdump -C   2>/dev/null`
+  #echo "$PTABLE"
+  line1=$(echo "$PTABLE" |  /bin/busybox grep "00000000" 2>/dev/null) 
+  LABELDD="$(echo "${line1:61:8}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  #echo $LABELDD
+  if [ "$LABELDD" != "EFI PART" ]; then 
+    echo "Partition Table has no valid GUUID Partition Table Descriptor !"
+    echo "Expected 'EFI PART' in this examined startsector, referenced by MS-DOS Partition table"
+    export PTTYPE=""
+    echo "abending...."
+    return 255
+  else
+    export PTTYPE="gpt"
+    TOK=""
+    TOK="PTTYPE_$PARTDEV=\"$PTTYPE\""
+    eval "$TOK"
+    export "PTTYPE_$PARTDEV"
+  fi
+  LABELDD="$(echo "${line1:47:11}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  GPTHDRSIZE=""
+  for byte in $LABELDD; do
+    GPTHDRSIZE="$byte$GPTHDRSIZE"
+  done 
+  
+  GPTHDRSIZE=$(( 0x${GPTHDRSIZE} ))
+  export GPTHDRSIZE
+  #echo "headersize $GPTHDRSIZE"
+  line1=$(echo "$PTABLE" |  /bin/busybox grep "00000030" 2>/dev/null) 
+  line2=$(echo "$PTABLE" |  /bin/busybox grep "00000040" 2>/dev/null) 
+  LABELDD="$(echo "${line1:35:23} ${line2:10:23}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  #echo $LABELDD
+  PUUID="$(echo $LABELDD  | /bin/busybox tr -d " " 2>/dev/null)"
+  #echo $PUUID
+  PUUID=`assign_gpt_partuuid "$PUUID"`
+  #echo "first assigned puuid : $PUUID"
+  DISKUUID="$PUUID"
+  export DISKUUID
+  TOK=""
+  TOK="PARTUUID_$PARTDEV0=\"$DISKUUID\""
+  eval "$TOK"
+  export "PARTUUID_$PARTDEV0"
+  line2=$(echo "$PTABLE" |  /bin/busybox grep "00000050" 2>/dev/null) 
+  LABELDD="$(echo "${line2:10:12}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+  #echo $LABELDD
+  TOK=""
+  for byte in $LABELDD; do
+    TOK="$byte$TOK"
+  done
+  GPTSIZE=$(( 0x$TOK ))
+  GPTHDRID="af 3d c6 0f 83 84 72 47  8e 79 3d 69 d8 47 7d e4"
+  EFIID="c1 2a 73 28 f8 1f 11 d2  ba 4b 00 a0 c9 3e c9 3b"
+  EFIID2="28 73 2a c1 1f f8 d2 11  ba 4b 00 a0 c9 3e c9 3b"
+  EFIHDRID="  ba 4b 00 a0 c9 3e c9 3b"
+  NILLINE="00000000  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|"
+  GPTHDRCONTAINER=""
+  start=2
+  counter=0
+  if [ "$PNUM" != "" ];then
+  for cnt in `seq 0 127`; do 
+    GPTHDRCONTAINER=`/bin/busybox dd if=$MAINDEV bs=$GPTSIZE skip=$(( $start + $cnt )) count=1 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+    line1=$(echo "$GPTHDRCONTAINER" |  /bin/busybox grep "00000000" 2>/dev/null)
+    #echo "counter=$counter"
+    #echo "$GPTHDRCONTAINER"
+    if `is_substring_of "$GPTHDRID " "$line1 "` || `is_substring_of "$EFIHDRID " "$line1 "`; then 
+      counter=$(( $counter + 1 ))
+    
+      if [ $counter -eq $PNUM ]; then 
+       #echo "partitionheader no. $counter at $(( $GPTSIZE * $(( $start + $cnt )) ))"
+       #echo "$GPTHDRCONTAINER"
+       line2=$(echo "$GPTHDRCONTAINER" |  /bin/busybox grep "00000010" 2>/dev/null)
+       PARTUUID=${line2:10:48}
+       PARTUUID=$(echo $PARTUUID | /bin/busybox tr -d " " 2>/dev/null)
+       #echo "$PARTUUID"
+       PARTUUID=`assign_gpt_partuuid "$PARTUUID"`
+       TOK=""
+       TOK="PARTUUID_$PARTDEV=\"$PARTUUID\""
+       eval "$TOK"
+       export "PARTUUID_$PARTDEV"
+       echo "Partuuid for $PARTDEV ='$PARTUUID'"
+       #export
+       line2=$(echo "$GPTHDRCONTAINER" |  /bin/busybox grep "00000020" 2>/dev/null)
+       STARTLBA=${line2:10:23}
+       ENDLBA=${line2:35:23}
+       #echo "startlba='$STARTLBA'  endlba='$ENDLBA'"
+       TOK=""
+       for s in $STARTLBA; do
+         TOK="$s$TOK"
+       done
+       STARTLBA=$(( 0x$TOK ))
+       TOK=""
+       for e in $ENDLBA; do
+         TOK="$e$TOK"
+       done
+       ENDLBA=$(( 0x$TOK ))
+       #echo "startlba='$STARTLBA'  endlba='$ENDLBA'"
+       line2=$(echo "$GPTHDRCONTAINER" |  /bin/busybox grep "00000030" 2>/dev/null)
+       FLAG=${line2:10:13}
+       TOK=""
+       for s in $FLAG; do
+         TOK="$s$TOK"
+       done
+       FLAG=$(( 0x$TOK ))
+       case $FLAG in 
+         0)
+            #echo "System partition (disk partitioning utilities must preserve the partition as is)"
+            assign_specified_partition_parameters  "$MAINDEV$counter" "$STARTLBA" "$ENDLBA" "$FS"
+         ;;
+         2)
+            #echo "EFI firmware should ignore the content of the partition and not try to read from it"
+            :
+         ;;
+         4)
+            #echo "Legacy BIOS bootable (equivalent to active flag (typically bit 7 set) at offset +0h in partition entries of the MBR partition table)"
+            assign_specified_partition_parameters  "$MAINDEV$counter" "$STARTLBA" "$ENDLBA" "$FS"
+         ;;
+       esac    
+       #echo $FLAG
+       FLAG=${line2:24:13}
+       TOK=""
+       for s in $FLAG; do
+         TOK="$s$TOK"
+       done
+       FLAG=$(( 0x$TOK ))
+       case $FLAG in 
+          268435456)
+            #echo "Read-only: This partition is flagged read-only "
+            assign_specified_partition_parameters  "$MAINDEV$counter" "$STARTLBA" "$ENDLBA" "$FS"
+         ;;
+         1073741824)
+            #echo ""
+            :
+         ;;
+         2147483648)
+            #echo "Hidden Flag: The partition does not appear for regular OS use."
+         ;;
+       esac    
+       #echo $FLAG
+       echo "Successfully found the partition no. '$PNUM' "
+       break
+      fi 
+     elif [ "$line1" = "$NILLINE" ]; then
+      if [ $cnt -gt 16 ]; then break; fi  
+     fi
+  done
+  else
+    echo "no partition number specified!"
+  fi
+  #
+}
+#76 98 53 4c 58 2f 93 4a  90 a0 5a 0d 67 07 1b ee
+read_partitions_from_mbrtable()
+{
+    local DISKID PTABLE DOSTABLE PART1 PART2 PART3 PART4
+    if [ "$1" = "" ]; then return 127; fi
+    if [ "$2" = "verify" ]; then
+       PTABLE=$(/bin/busybox dd if=$1  bs=1 count=512  skip=0 2>/dev/null)
+       if ! `verify_ptable "$PTABLE"`; then 
+         return 127
+       fi  
+    fi
+    #echo "PTABLE=$PTABLE"
+    #echo $PTABLE | /bin/busybox hexdump -C  2>/dev/null
+    #DOSTABLE=$(echo $PTABLE | cut -b 446- ) #${PTABLE:446:64}   #
+    #echo "DOSTABLE=$DOSTABLE"  #
+    #echo $DOSTABLE | /bin/busybox hexdump -C  2>/dev/null
+    #DOSTABLE=${PTABLE:0:445} #${PTABLE:446:64}   #
+    #echo "DOSTABLE=$DOSTABLE"  #
+    #DOSTABLE=${PTABLE#$DOSTABLE}
+    #echo $DOSTABLE | /bin/busybox hexdump -C  2>/dev/null
+    #PART1=${DOSTABLE:0:15}
+    #echo $PART1  #| /bin/busybox hexdump -C  2>/dev/null
+    #PART2=$(echo ${PTABLE:17:32} | /bin/busybox hexdump -C  2>/dev/null)
+    #echo "$PART2"
+    #PART3=$(echo ${PTABLE:33:48} | /bin/busybox hexdump -C  2>/dev/null)
+    #echo "$PART3"
+    #PART4=$(echo ${PTABLE:49:64} | /bin/busybox hexdump -C  2>/dev/null)
+    #echo "$PART4"
+    DOSTABLE=`/bin/busybox dd if=$1   bs=1 count=64  skip=446  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "DOSTABLE="  #
+    echo "$DOSTABLE"  #
+    PART1=`/bin/busybox dd if=$1   bs=1 count=16  skip=446  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "PART1="
+    echo "$PART1"
+    PART2=`/bin/busybox dd if=$1   bs=1 count=16  skip=462  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "PART2="
+    echo "$PART2"
+    PART3=`/bin/busybox dd if=$1   bs=1 count=16  skip=478  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "PART3="
+    echo "$PART3"
+    PART4=`/bin/busybox dd if=$1   bs=1 count=16  skip=494  2>/dev/null| /bin/busybox hexdump -C  2>/dev/null | /bin/busybox cut -c 1-60 2>/dev/null  | /bin/busybox cut -c 11-  2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+    echo "PART4="
+    echo "$PART4"
+    for line in $DOSTABLE; do
+       :
+    done
+
+    DISKID=$(echo ${PTABLE:440:4} | /bin/busybox hexdump  2>/dev/null)
+    if [ $? -eq 0 -a "$DISKID" != "" ]; then
+      PUUID=""
+      # reorder the words containing the partuuid
+      BYTE1=${DISKID:8:4}
+      BYTE2=${DISKID:13:4}
+      PUUID="$BYTE2$BYTE1"
+    fi
+    export PUUID
+    # TODO: set geometry and size variables from partitiontable
+}
+#
+DOSTABLE=""
+PUUID=""
+#
+
+EBRENTRIES=""
+#
+assign_ebrtable_entries()
+{
+    local BOOTPT counter DISKPNUM DEV line
+    DISKPNUM=1
+    counter=0
+    EBR="$1"
+    DEV="$2"
+    PARTDEV=$(/bin/busybox basename $DEV 2>/dev/null2)
+    for line in $EBRENTRIES; do
+      if [ "$line" != "00000000000000000000000000000000" ]; then
+        counter=$(( $counter + 1 ))
+        BOOTPT=${line:0:1}
+        #echo BOOTABLE $BOOTPT
+        TOK=""
+        for i in 16 18 20 22; do
+           TOK="${line:$i:2}$TOK"
+        done
+        #TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+        STARTSECT=$(( 0x$TOK ))
+        TOK=""
+        for i in 24 26 28 30 ; do
+           TOK="${line:$i:2}$TOK"
+        done
+        #TOK=$(echo $TOK | /bin/busybox tr -d " " 2>/dev/null)
+        LENSECT=$(( 0x$TOK ))
+        #echo "Startsector of partition       $PNUM : $STARTSECT"
+        ENDSECT=$(( $STARTSECT + $LENSECT - 1 ))
+        #echo "Endsector  of partition        $PNUM : $ENDSECT"
+        #echo "Length in Sectors of partition $PNUM : $LENSECT"
+        #echo "Length in Bytes   of partition $PNUM : $(( $LENSECT * $SECTSIZE ))"
+        #echo "Length in KiBytes of partition $PNUM : $(( $LENSECT * $SECTSIZE / $KB ))"
+        #echo "Length in MiBytes of partition $PNUM : $(( $LENSECT * $SECTSIZE / $MB ))"
+        #echo "Length in GiBytes of partition $PNUM : $(( $LENSECT * $SECTSIZE / $GB ))"
+        assign_array_variable "STARTSECTOR_"  "$PARTDEV$counter" "$STARTSECT"
+        assign_array_variable "ENDSECTOR_"    "$PARTDEV$counter" "$ENDSECT"
+        assign_array_variable "SECTORLENGTH_" "$PARTDEV$counter" "$LENSECT"
+        FS=${line:8:2}
+        #echo FS $FS
+        case $FS in
+          ee|ef)
+            assign_guuid_partition_mainheader "$DEV" "$STARTSECT" "$SECTSIZE" "$LENSECT"
+          ;;
+          00)
+            :
+          ;;
+          *)
+            TOK="PARTUUID_"
+            TOK="$TOK$PARTDEV$DISKPNUM=\"${PUUID}-0${DISKPNUM}\""
+            #echo "TOK=$TOK"
+            eval "$TOK"
+            export $TOK
+            assign_array_variable "PARTUUID_"  "$PARTDEV$counter" "${PUUID}-0${DISKPNUM}"
+            #export "PARTUUID_$PARTDEV"
+          ;;
+        esac
+      fi
+      DISKPNUM=$(( $DISKPNUM + 1 ))
+    done
+
+}
+read_ebr()
+{
+  local DISKID PTABLE WORD1 WORD2 SS PART1 PART2 PART3 PART4 PARTITIONS
+  local DEV PARTDEV PARTDEV00 DISKPNUM TOK STARTSECT LENSECT
+  if [ -e  "$1" ]; then
+    DEV="$1"
+    PARTDEV=""
+    PARTDEV00=""
+    MAINDEV=""
+    DEVPATH=""
+    STARTSECT=0
+    LENSECT=0
+    ENDSECT=0
+    line1=""
+    line2=""
+    TOK=""
+    DISKPNUM=""
+    GB=$(( 1024 * 1024 * 1024 ))
+    MB=$(( 1024 * 1024 ))
+    KB=1024
+    if ! `assign_devpath_string $DEV`; then 
+       echo " device and partition name not recognizable:"
+       echo " maindev $MAINDEV maindevpath $MAINDEVPATH pnum $PNUM blkdev $BLKDEV blkdevpart $BLKDEVPART "
+    fi
+    SECTSIZE=`/bin/busybox blockdev --getss "$MAINDEV" 2>/dev/null`
+    if [ "$SECTSIZE" = "" ]; then 
+      SECTSIZE=512
+    fi
+    export SECTSIZE
+    BLKSIZE=`/bin/busybox blockdev --getbsz "$MAINDEV" 2>/dev/null`
+    if [ "$BLKSIZE" = "" ]; then 
+      BLKSIZE=$SECTSIZE
+    fi
+    PARTUUID=""
+    PUUID=""
+    PTABLE=`/bin/busybox dd if=$1   bs=512 count=1 skip=0  2>/dev/null | /bin/busybox hexdump -vC  2>/dev/null | /bin/busybox cut -c 11-60 | /bin/busybox tr -d " \n" 2>/dev/null`
+     # read the four bytes of ms-dos partuuid and store it as 8 byte hex number in correct format
+    DISKID=${PTABLE:880:8}
+    #echo DISKID $DISKID
+    if [ "$DISKID" != "00000000" ]; then
+      PUUID=""
+      # reorder the words containing the partuuid
+      for i in 0 2 4 6; do
+        PUUID="${DISKID:$i:2}$PUUID"
+      done
+      #echo PUUID $PUUID
+      PARTUUID=$PUUID
+      export PUUID PARTUUID
+    fi
+    PARTITIONS=${PTABLE:892:128}  
+    # set the partition parameters
+    EBRENTRIES="${PTABLE:892:32} ${PTABLE:924:32} ${PTABLE:956:32} ${PTABLE:988:32}"
+    #echo EBRENTRIES $EBRENTRIES
+    export EBRENTRIES
+    PARTITIONS=""
+    counter=0
+    for line in $EBRENTRIES; do
+      if [ "$line" != "00000000000000000000000000000000" ]; then
+        counter=$(( $counter + 1 ))
+      fi
+    done
+    if [ $counter -eq 0 ]; then 
+      # examine the first 32768 bytes of the blockdev
+      PTABLE=`/bin/busybox dd if=$1   bs=4096 count=8 skip=0  2>/dev/null | /bin/busybox hexdump -vC  2>/dev/null`
+      MBRENDOFFSETS=`echo "$PTABLE" | /bin/busybox grep "55 aa  |" 2>/dev/null | /bin/busybox cut -c 1-8 2>/dev/null`
+      if [ `echo "$MBRENDOFFSETS" | /bin/busybox wc -l 2>/dev/null` -gt 0  ]; then 
+        OFFSETS=""
+        for offs in $MBRENDOFFSETS; do
+          offs=$(( 0x$offs ))
+          offs=$(( $offs - 496 ))
+          OFFSETS="$offs $OFFSETS"
+        done
+        PT=`echo "$PTABLE" | /bin/busybox cut -c 11-60 2>/dev/null | /bin/busybox tr -d " \n" 2>/dev/null` 
+        for offs in $OFFSETS; do
+          EBRENTRIES="${PT:$(( 892 + $offs)):32} ${PT:$(( 924 + $offs )):32} ${PT:$(( 956 + $offs )):32} ${PT:$(( 988 + $offs )):32}"
+          export EBRENTRIES
+          counter=0
+          for line in $EBRENTRIES; do
+            if [ "$line" != "00000000000000000000000000000000" ]; then
+              counter=$(( $counter + 1 ))
+            fi
+          done
+          if [ $counter -eq 0 ]; then 
+            # skip the first Megabyte and examine the following 32768 bytes of the blockdev
+            PTABLE=`/bin/busybox dd if=$1   bs=4096 count=8 skip=256  2>/dev/null | /bin/busybox hexdump -vC  2>/dev/null`
+            MBRENDOFFSETS=`echo "$PTABLE" | /bin/busybox grep "55 aa  |" 2>/dev/null | /bin/busybox cut -c 1-8 2>/dev/null`
+            if [ `echo "$MBRENDOFFSETS" | /bin/busybox wc -l 2>/dev/null` -gt 0  ]; then 
+              OFFSETS=""
+              for offs in $MBRENDOFFSETS; do
+                offs=$(( 0x$offs ))
+                offs=$(( $offs - 496 ))
+                OFFSETS="$offs $OFFSETS"
+              done
+              PT=`echo "$PTABLE" | /bin/busybox cut -c 11-60 2>/dev/null | /bin/busybox tr -d " \n" 2>/dev/null` 
+              for offs in $OFFSETS; do
+                EBRENTRIES="${PT:$(( 892 + $offs)):32} ${PT:$(( 924 + $offs )):32} ${PT:$(( 956 + $offs )):32} ${PT:$(( 988 + $offs )):32}"
+                export EBRENTRIES
+                counter=0
+                for line in $EBRENTRIES; do
+                  if [ "$line" != "00000000000000000000000000000000" ]; then
+                    counter=$(( $counter + 1 ))
+                  fi
+                done
+                if [ $counter -ne 0 ]; then 
+                  assign_ebrtable_entries "EBRENTRIES"  "$MAINDEV"
+                fi
+              done
+            fi
+            break
+          else
+             assign_ebrtable_entries "EBRENTRIES"  "$MAINDEV"
+          fi
+        done
+      else
+        assign_ebrtable_entries "EBRENTRIES" "$MAINDEV"
+      fi
+      
+    else
+      #echo "assigning $EBRENTRIES"
+      assign_ebrtable_entries "EBRENTRIES" "$MAINDEV"
+    fi
+    
+    return 0
+  else  #  dev $1 does not exist
+    return 127 
+  fi
+}
+#
+read_msdos_partitiontable()
+{
+    local DISKID PTABLE WORD1 WORD2  PART1 PART2 PART3 PART4
+    if [ "$1" = "" ]; then 
+      PARTUUID=""
+      PUUID=""
+      DOSTABLE=""
+      FS=""
+      export FS PARTUUID DOSTABLE PUUID
+      return 127
+    elif [ -e  "$1" ]; then
+      #echo "`/bin/busybox dd if=$1  bs=1  skip=446 count=64 2>/dev/null | /bin/busybox hexdump -v 2>/dev/null`"
+      #echo "`/bin/busybox dd if=$1  bs=1  skip=446 count=64 2>/dev/null | /bin/busybox hexdump -vC 2>/dev/null`"
+      # need to set hexdump -vC  !!!! else the empty partitions will not appear and numbering gets wrong
+      PARTUUID=""
+      PUUID=""
+      DOSTABLE=`/bin/busybox dd if=$1   bs=1 count=64  skip=446  2>/dev/null| /bin/busybox hexdump -vC  2>/dev/null | /bin/busybox cut -c 11-60 2>/dev/null | /bin/busybox  tr -d " " 2>/dev/null `
+      #echo DOSTABLE $DOSTABLE
+      export DOSTABLE
+      #export FS=${DOSTABLE:8:2}
+      #echo $FS
+      WORD1=""
+      WORD2=""
+       # read the four bytes of ms-dos partition uuid and store it as 8 byte hex number in correct format
+      DISKID=`/bin/busybox dd if=$1   bs=1 count=4  skip=440  2>/dev/null| /bin/busybox hexdump  2>/dev/null`
+      if [ $? -eq 0 -a "$DISKID" != "" ]; then
+        PUUID=""
+        # reorder the words containing the partuuid
+        WORD1=${DISKID:8:4}
+        WORD2=${DISKID:13:4}
+        PUUID="$WORD2$WORD1"
+      fi
+      #echo $PUUID
+      PARTUUID=$PUUID
+      export PUUID PARTUUID
+      return 0
+    else
+      PARTUUID=""
+      PUUID=""
+      DOSTABLE=""
+      FS=""
+      export FS PARTUUID DOSTABLE PUUID
+      return 127
+    fi
+}
+#
+#
+set_blockdev_partition_parameters()
+{
+  #set -x
+  local DEV DEVPATH TOK line1 line2
+  DEV="$1"
+  PARTDEV=""
+  PARTDEV00=""
+  MAINDEV=""
+  DEVPATH=""
+  STARTSECT=""
+  ENDSECT=""
+  line1=""
+  line2=""
+  TOK=""
+  PNUM=""
+  if [ -e $DEV ]; then
+    BLKDEV=""
+    BLKDEVPART=""
+    local string sysblkdev bdevs
+    string="$1"
+    bdevs=""
+    BLKDEVPART=`/bin/busybox basename $string 2>/dev/null`
+    MAINDEVPATH="`/bin/busybox dirname $string 2>/dev/null`"
+    MAINDEV=""
+    sysblkdev=""
+    for sysblkdev in $(/bin/busybox ls -1 /sys/block 2>/dev/null); do
+      case $BLKDEVPART in
+        *$sysblkdev*)
+          bdevs=$sysblkdev
+        ;;
+      esac
+    done
+    if [ "$bdevs" != "" ]; then 
+      if [ "$bdevs" != "$BLKDEVPART" ]; then 
+        BLKDEV="$bdevs"
+        PNUM=`last_digits_of_string "$BLKDEVPART"`
+      else
+        BLKDEV="$BLKDEVPART"
+        BLKDEVPART=""  
+        PNUM=""
+      fi
+      MAINDEV="${MAINDEVPATH}/${BLKDEV}"
+      export BLKDEVPART BLKDEV PNUM MAINDEV MAINDEVPATH
+    fi
+    echo "maindev $MAINDEV "
+    if [ "$PNUM" != "" ]; then
+    if [ $PNUM -gt 128 ]; then
+        return 255
+    fi
+    else
+      return 127
+    fi  
+    SECTSIZE=`/bin/busybox blockdev --getss "$MAINDEV" 2>/dev/null`
+    if [ "$SECTSIZE" = "" ]; then 
+      SECTSIZE=512
+    fi
+    export SECTSIZE
+    BLKSIZE=`/bin/busybox blockdev --getbsz "$MAINDEV" 2>/dev/null`
+    if [ "$BLKSIZE" = "" ]; then 
+      BLKSIZE=$SECTSIZE
+    fi
+    export BLKSIZE
+    read_msdos_partitiontable $MAINDEV
+    if [ $? -eq 0 ];then 
+      assign_filesystem_parameter
+      case $FS in
+         ee|ef)
+           echo "assigning gpt table"
+           assign_guuid_partition "$DEV"
+         ;;
+         00)
+           : 
+           #  empty MBR means that there are no partition parameters to assign
+         ;;
+         *)
+           echo "assigning msdos table"
+           assign_msdos_partition "$DEV"
+         ;;
+      esac
+    else
+      return 127
+    fi
+  else
+    return 127
+  fi
+}
+#
+set_blockdev_partition_parameters_old()
+{
+  #set -x
+  local DEV DEVPATH TOK line1 line2
+  DEV="$1"
+  PARTDEV=""
+  PARTDEV00=""
+  MAINDEV=""
+  DEVPATH=""
+  STARTSECT=""
+  ENDSECT=""
+  line1=""
+  line2=""
+  TOK=""
+  PNUM=""
+  if [ -e $DEV ]; then
+    if ! `assign_devpath_string $DEV`; then 
+       echo " device and partition name not recognizable:"
+       echo " maindev $MAINDEV maindevpath $MAINDEVPATH pnum $PNUM blkdev $BLKDEV blkdevpart $BLKDEVPART "
+    fi
+    echo "maindev $MAINDEV "
+    if [ "$PNUM" != "" ]; then
+    if [ $PNUM -gt 128 ]; then
+        return 255
+    fi
+    else
+      return 127
+    fi  
+    SECTSIZE=`/bin/busybox blockdev --getss "$MAINDEV" 2>/dev/null`
+    if [ "$SECTSIZE" = "" ]; then 
+      SECTSIZE=512
+    fi
+    export SECTSIZE
+    BLKSIZE=`/bin/busybox blockdev --getbsz "$MAINDEV" 2>/dev/null`
+    if [ "$BLKSIZE" = "" ]; then 
+      BLKSIZE=$SECTSIZE
+    fi
+    export BLKSIZE
+    read_msdos_partitiontable $MAINDEV
+    if [ $? -eq 0 ];then 
+      assign_filesystem_parameter
+      case $FS in
+         ee|ef)
+           echo "assigning gpt table"
+           assign_guuid_partition "$DEV"
+         ;;
+         00)
+           : 
+           #  empty MBR means that there are no partition parameters to assign
+         ;;
+         *)
+           echo "assigning msdos table"
+           assign_msdos_partition "$DEV"
+         ;;
+      esac
+    else
+      return 127
+    fi
+  else
+    return 127
+  fi
+}
+#
+set_blockdev_parameters()
+{
+  #set -x
+  local DEV PNUM PARTDEV PARTDEV00 DEVPATH BLOCKDEVICES
+  DEV="$1"
+  PARTDEV=""
+  PARTDEV00=""
+  MAINDEV=""
+  DEVPATH=""
+  STARTSECT=""
+  ENDSECT=""
+  line1=""
+  line2=""
+  TOK=""
+  PNUM=""
+  PARTDEV="`/bin/busybox basename $DEV 2>/dev/null`"
+  #BLOCKDEVICES="`/bin/busybox ls -1 /sys/block 2>/dev/null`"
+  #if `is_substring_of "$PARTDEV" "$BLOCKDEVICES"`; then
+    #PARTDEV00=${PARTDEV%$PNUM}
+    #echo PARTDEV00 $PARTDEV00
+  if ! `assign_devpath_string $DEV`; then
+    echo "errors in maindev ....."
+    return 127
+  fi 
+  #MAINDEVPATH="`/bin/busybox dirname $DEV 2>/dev/null`"
+  #MAINDEV=$MAINDEVPATH/$PARTDEV
+  #echo MAINDEV $MAINDEV
+  SECTSIZE=`/bin/busybox blockdev --getss "$MAINDEV" 2>/dev/null`
+  export SECTSIZE
+  read_msdos_partitiontable $MAINDEV 
+  if [ $? -eq 0 ]; then
+    #echo "read table: $DOSTABLE, sectorsize: $SECTSIZE, assigning : $MAINDEV $FS"
+    assign_filesystem_parameter
+    case $FS in
+       ee|ef)
+         assign_guuid_partitiontable "$MAINDEV"
+       ;;
+       00)
+         : 
+         #  empty MBR means that there are no partition parameters to assign
+       ;;
+       *)
+         assign_msdos_partitiontable "$MAINDEV"
+       ;;
+    esac
+  else
+    return 127
+  fi
+}
+##
+BLOCKDEVPARTS=""
+#
+set_disk_parameters()
+{
+  #set -x
+  local DEV PARTDEV OLDMAINDEV
+  DEV=""
+  PARTDEV=""
+  PARTDEVS=""
+  BLOCKDEVPARTS=""
+  OLDMAINDEV=""
+  BLOCKDEVS="`/bin/busybox ls -1d /sys/block/sd*/sd* /sys/block/sr*/sr* /sys/block/sr* /sys/block/mmc*/mmc* 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`"
+  for DEV in $BLOCKDEVS; do
+    PARTDEV="`/bin/busybox basename $DEV 2>/dev/null`"
+    BLOCKDEVPARTS="$BLOCKDEVPARTS $PARTDEV"
+  done 
+  BLOCKDEVS="`/bin/busybox ls -1d /sys/block/sd* /sys/block/mmc* /sys/block/sr* 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`"
+  for DEV in $BLOCKDEVS; do
+    PARTDEV="`/bin/busybox basename $DEV 2>/dev/null`"
+    PARTDEVS="$PARTDEVS $PARTDEV"
+    set_blockdev_parameters /dev/$PARTDEV
+  done 
+  export PARTDEVS BLOCKDEVPARTS
+}
+#
+set_disk_parameters_old()
+{
+  #set -x
+  local DEV PNUM PARTDEV PARTCONTAINER DISKID OLDMAINDEV line1 line2 TOK SSBYTE0 SSBYTE1 SSBYTE2 SSBYTE3
+  DEV=""
+  PARTDEV=""
+  PARTDEVS=""
+  MAINDEV=""
+  STARTSECT=""
+  line1=""
+  line2=""
+  TOK=""
+  OLDMAINDEV=""
+  PUUID=""
+  PNUM=1
+  BLOCKDISKS="`/bin/busybox ls -1d /sys/block/sd*/sd* 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`"
+  BLOCKDEVS="`/bin/busybox ls -1d /sys/block/sd* 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`"
+  for DEV in $BLOCKDEVS; do
+    PARTDEV="`/bin/busybox basename $DEV 2>/dev/null`"
+    PARTDEVS="$PARTDEVS $PARTDEV"
+    DEV="/dev/${PARTDEV:0:3}"
+    PUUID=""
+    SECTSIZE=`/bin/busybox blockdev --getss "$MAINDEV" 2>/dev/null`
+    read_msdos_partitiontable $DEV 
+    #export 
+    PNUM=1
+    for line in $DOSTABLE; do
+      if [ "$line" != "00000000000000000000000000000000" ]; then
+        SSBYTE0=${line:16:2}
+        SSBYTE1=${line:18:2}
+        SSBYTE2=${line:20:2}
+        SSBYTE3=${line:22:2}
+        #echo "sectorbytes: $SSBYTE3$SSBYTE2$SSBYTE1$SSBYTE0"
+        STARTSECT=$(( 0x$SSBYTE3$SSBYTE2$SSBYTE1$SSBYTE0 ))
+        #echo "Startsector of partition $PNUM : $STARTSECT"
+        FS=${line:8:2}
+        PARTCONTAINER=`/bin/busybox dd if=$DEV bs=$SECTSIZE skip=$STARTSECT count=4 2>/dev/null | /bin/busybox hexdump -C 2>/dev/null`
+        case $FS in
+          6)
+              line1=$(echo "$PARTCONTAINER" |  /bin/busybox grep "00000020" 2>/dev/null) 
+              line2=$(echo "$PARTCONTAINER" |  /bin/busybox grep "00000030" 2>/dev/null) 
+              LABELDD="$(echo "${line1:71:6}${line2:61:6}" | /bin/busybox tr -d " \.\`\+\\" 2>/dev/null)"
+          ;;
+          c|0c)
+              line1=$(echo "$PARTCONTAINER" |  /bin/busybox grep "00000040" 2>/dev/null) 
+              line2=$(echo "$PARTCONTAINER" |  /bin/busybox grep "00000050" 2>/dev/null) 
+              LABELDD="$(echo "${line1:68:8}${line2:61:2}" | /bin/busybox tr -d " \.\`\+\\" 2>/dev/null)"
+          ;;
+          83)
+              line1=$(echo "$PARTCONTAINER" |  /bin/busybox grep "00000470" 2>/dev/null) 
+              line2=$(echo "$PARTCONTAINER" |  /bin/busybox grep "00000480" 2>/dev/null) 
+              LABELDD="$(echo "${line1:69:8}${line2:61:8}" | /bin/busybox tr -d "/\.\`\+\\" 2>/dev/null)"
+          ;;
+        esac
+        export LABELDD
+        TOK="LABEL_$PARTDEV$PNUM=\"${LABELDD}\""
+        eval "$TOK"
+        export "LABEL_$PARTDEV$PNUM"
+        TOK="PUUID_$PARTDEV$PNUM=\"${PUUID}-0${PNUM}\""
+        eval "$TOK"
+        export "PUUID_$PARTDEV$PNUM"
+        LABELCONTAINER=""
+        TOK=""
+        PNUM=$(( $PNUM + 1 ))
+      fi
+    done
+    TOK="PUUID_$PARTDEV=\"${PUUID}\""
+    eval "$TOK"
+    export "PUUID_$PARTDEV"
+    TOK=""      
+  done
+  export PARTDEVS 
+}
+#
+DNSServer=""
+
+echo "[ $0 ] : .... all functions read in !"
+#

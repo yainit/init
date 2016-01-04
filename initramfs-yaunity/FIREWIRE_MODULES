@@ -1,0 +1,1 @@
+DEFAULT_FIREWIREDRIVERS="firewire_core firewire_sbp2 firewire_ohci firewire_nosy" 
