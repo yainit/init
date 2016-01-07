@@ -333,9 +333,13 @@ read_cmdline()
   TOEVAL=""
   append=""
   #CMDLINE=" boot=LABEL=\" SYS1  EXT4 \"  `/bin/busybox  cat /proc/cmdline 2>/dev/null` root=LABEL=\"SYS01 EXT4\" last=\"off\" "
-  CMDLINE="`/bin/busybox  cat /proc/cmdline 2>/dev/null`"
+  if [ "$DEFAULT_KERNELCMDLINE_PARAMETERS" != "" ]; then 
+    CMDLINE="`/bin/busybox  cat /proc/cmdline 2>/dev/null` $DEFAULT_KERNELCMDLINE_PARAMETERS"
+  else
+    CMDLINE="`/bin/busybox  cat /proc/cmdline 2>/dev/null`"
+  fi
   ARGLINE="$CMDLINE"
-  
+  #
   for ARG in $CMDLINE; do
     # save root=* or boot=* or gernerally x=* parameters as variable assignments 
     # this is necessary for parameters specfied in bootmanager configuration file
@@ -476,8 +480,23 @@ read_cmdline()
 
 
   export RUNLEVEL QUIET VERBOSE
- 
-  #
+  
+#  if [ "$DEFAULT_KERNELCMDLINE_PARAMETERS" != "" ]; then 
+#    for var in $DEFAULT_KERNELCMDLINE_PARAMETERS; do
+#     case $var in
+#	*=*)
+#	  IVAR=${var//=*}
+#	  HVAR=${var#*=}
+#	  if [ "$IVAR$HVAR" != "" ] ; then
+#	    TOEVAL="$IVAR=$HVAR"
+#	    eval "$TOEVAL" 2>/dev/null
+#	    export "$var"
+#	  fi
+#	;;
+#     esac
+#    done
+#  fi
+#
 }
 #
 read_argline_testfunc()

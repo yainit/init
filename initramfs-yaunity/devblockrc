@@ -32,38 +32,49 @@ start_tracing
 #
 # in case of unrecognized cmdline informations
 inline_external_file "initsys-functions"
-read_cmdline
-debug_mark
-assign_init_variables
-debug_mark
-parse_rootdevice_string
-debug_mark
-echoconsole "$INITPREF" "Reading the Blockdevice Functions ...."
-inline_external_file "blockdevice-functions"
-echoconsole "$INITPREF" "Recognizing rootfilesystem device"
-recognize_rootdevice
-debug_mark
+#read_cmdline
+#debug_mark
+#assign_init_variables
+#debug_mark
+#parse_rootdevice_string
+#debug_mark
+#echoconsole "$INITPREF" "Reading the Blockdevice Functions ...."
+#inline_external_file "blockdevice-functions"
+#echoconsole "$INITPREF" "Recognizing rootfilesystem device"
+#recognize_rootdevice
+#debug_mark
 
 if [ "$ROOT" = "" ]; then
   read_cmdline
   assign_init_variables
+  debug_mark
   parse_rootdevice_string
 fi
 #
 if [ "$ROOTDEV" = "" ]; then  
   parse_rootdevice_string
+  debug_mark
 fi
+echoconsole "$INITPREF" "Reading the Blockdevice Functions ...."
+inline_external_file "blockdevice-functions"
+echoconsole "$INITPREF" "Recognizing rootfilesystem device"
+recognize_rootdevice
+#
+/bin/busybox mdev -s 2>/dev/null 
+/bin/busybox usleep 500000 2>/dev/null 
+/bin/busybox sync  2>/dev/null   
 debug_mark
 if [ "$ROOTDEV" = "" ]; then  
   read_cmdline
   assign_init_variables
   parse_rootdevice_string
+  debug_mark
   echoconsole "$INITPREF" "Reading the Blockdevice Functions ...."
   inline_external_file "blockdevice-functions"
   echoconsole "$INITPREF" "Recognizing rootfilesystem device"
   recognize_rootdevice
-  #/bin/busybox mdev -s 2>/dev/null 
-  #/bin/busybox usleep 500000 2>/dev/null 
+  /bin/busybox mdev -s 2>/dev/null 
+  /bin/busybox usleep 500000 2>/dev/null 
   /bin/busybox sync  2>/dev/null   
 fi
 #
@@ -71,7 +82,7 @@ ROOTDEVOLD="$ROOTDEV"
 #
 debug_mark
 #
-if [ -e "$ROOTDEV" ]; then
+if [ -e "$ROOTDEV" ] && `is_accessible_blockdevice "$ROOTDEV"`; then
   echoconsole "$INITPREF" " Recognized rootfilesystem device: '$ROOTDEV'"
 elif [  "$ROOTDEV" != "" ]; then
   echoconsole "$INITPREF"  " Reading the Blockdevice Functions ...."

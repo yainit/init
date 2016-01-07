@@ -10,11 +10,17 @@ wherefrom you want to have invoked the system start by your bootloader.
 CHANGES:
 =========
 
-2016-01-04:
+2016-01-07:
 
-It took a bit of time to find out that the new AMDGPU driver needs to be
-blacklisted and the commandline parameters nomon and nosound have to be added.
-So finally here is the new init script set!
+Solved issue with the new graphic driver stack. Specifying nomon should 
+work to let systemd load correctly the graphic driver. 
+
+Introduced a working nobt (no bluetooth) for the case that some 
+kernel configuration should hang at wireless initiation. 
+nowlan or nowifi should work as well.
+
+Also new is the possibility to say noserial at the kernelcommandline to
+not superfluously load any RS-232 (8250) or other classical serial drivers. 
 
 2016-01-02:
 

@@ -476,7 +476,7 @@ initial_modules_load_defaults()
      /bin/busybox mdev -s  2>/dev/null
      /bin/busybox sync     2>/dev/null
      if [ "$DEBUG" != "" -o "$INITDBG" !=  "" ]; then
-       debug_busdevices "$MSGFILE" "debuggiing for input device drivers "     
+       debug_busdevices "$MSGFILE" "debugging for input device drivers "     
        /bin/busybox sleep 2
        if `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
          debug_busdevices "$MSGFILE" "before probing extraordinarily for inputdrivers"
@@ -532,13 +532,11 @@ initial_modules_load_auto()
 
     if [ "`/bin/busybox ls -1 /lib/modules/$KERNVER/kernel  2>/dev/null`" != "" ]; then
      echoconsole  "$INITPREF" " Kernel modules found for '$KERNVER' at '/lib/modules/$KERNVER/kernel'  ...."
-  #
-     
+     #
      echoconsole  "$INITPREF" "Initial Kernel Module probing...."
      set_blacklisted_modules      
      #debug_busdevices "$MSGFILE" " initial state before probing stdpc drivers "
      #probe_standardpc_drivers
-     debug_busdevices "$MSGFILE" " initial state before probing initial modalias/pci drivers "
      find_drivers_with_aliases
      # superfluous now
      #find_drivers_refine    
@@ -547,9 +545,10 @@ initial_modules_load_auto()
      set_principal_modules
      remove_duplicate_tokens_from_global_string "MODULES2LOAD"
      #echofile "$INITPREF" "modules : '$MODULES2LOAD'"
-     export ALLFOUNDMODULES="$MODULES2LOAD"
      #remove_already_loaded_modules "MODULES2LOAD"
      kernelmodules_order
+     export ALLFOUNDMODULES="$MODULES2LOAD"
+     debug_busdevices "$MSGFILE" " initial state before probing for initial modalias/pci drivers "
      echofile "$INITPREF" "primary modules to load: '$MODULES2LOAD'"
      kernelmodules_load
      /bin/busybox mdev -s  2>/dev/null
@@ -568,7 +567,7 @@ initial_modules_load_auto()
      fi
      local RC
      RC=11
-     for i in 1 2 3 4; do
+     for i in 1 2 3; do
        case "$(/bin/busybox cat /proc/bus/input/devices 2>/dev/null)" in
 	 *"sysrq kbd event"*|*"kbd leds event"*|*eyboard*|*ouse*|*EV=120013*|*EV=1f*)
 	   echoconsole "$INITPREF" "Keyboard | Mouse Driver has been loaded and device(s) appear(s) in bus."
@@ -608,7 +607,7 @@ initial_modules_load_auto()
      else
 	 echoconsole "$INITPREF" " Mouse and Keyboard successfully initiated "
      fi
-     if [ $RC -eq 1 ]; then
+     if [ $RC -ne 0 ]; then
 	 if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
 	    echofile  "$INITPREF" " initial state before probing input drivers "
 	    probe_inputdevice_drivers
@@ -634,7 +633,7 @@ initial_modules_load_auto()
 	    debug_busdevices "$MSGFILE" "after legacy inputdevice driver loading"     
 	 #fi
 	 fi
-	 if  `is_string_in_file  "sysrq kbd event" "/proc/bus/input/devices" `; then
+	 if  `is_string_in_file  "sysrq kbd event" "/proc/bus/input/devices" ` || `is_string_in_file  "kbd leds event" "/proc/bus/input/devices" `; then
 	   SYSERRPROMPT=yes
 	 fi
     #     if  `is_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
@@ -651,6 +650,7 @@ initial_modules_load_auto()
      fi
      # repeat
      find_drivers_with_aliases_fast
+     # uevent method for kernel driver detecting
      MODULES2LOAD="$MODULES2LOAD `/bin/busybox find /sys  -name uevent  -exec cat '{}' 2>/dev/null \; | /bin/busybox grep DRIVER 2>/dev/null | /bin/busybox cut -f2- -d "=" 2>/dev/null| /bin/busybox tr "-" "_" 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null`"
      find_drivers_refine
      find_drivers_with_aliases
@@ -713,7 +713,7 @@ initial_modules_load_auto()
        debug_prompt "$INITPREF"       
        
      fi
-     #  the mouse does not matter in the same way like the keyboard does
+     #  the mouse does not matter for yainit in the same way like the keyboard does
      #if  `is_not_string_in_file  "ouse" "/proc/bus/input/devices" `; then
      #  probe_inputdevice_drivers
      #  /bin/busybox mdev -s  2>/dev/null
@@ -737,6 +737,7 @@ initial_modules_load_auto()
      export ALLFOUNDMODULES="$ALLFOUNDMODULES $MODULES2LOAD"
      remove_already_loaded_modules "MODULES2LOAD"
      echofile "$INITPREF" "modules to load: '$MODULES2LOAD'"
+     kernelmodules_order
      kernelmodules_load
      #
      debug_busdevices "$MSGFILE" "after 3rd run of modalias/uevent, before removing unused drivers"

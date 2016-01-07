@@ -4,6 +4,9 @@
 #
 #set -x
 #
+if [ "$MSGFILE" = "" ]; then 
+  MSGFILE="initmsg"
+fi
 echofile()
 {
   local  SCRIPT
@@ -286,8 +289,6 @@ assign_kernver_vars()
   echoconsole "$1" "Extra Version: '$EXTRAKERNVER' , Suffix Version: '$SUFFIXKERNVER' "
   return $RC
 }
-#
-
 #
 set_kernver()
 {
