@@ -1,6 +1,6 @@
 #
 #  INIT-FUNCTIONS for Universal INIT with busybox
-#  (C) Dieter Miosga , 2008-2015-10-09, dmiosga6200@gmail.com 
+#  (C) Dieter Miosga , 2008-2016-01-13, dmiosga6200@gmail.com 
 #
 #set -x
 #DELAY=delay
@@ -332,9 +332,8 @@ read_cmdline()
   IVAR=""
   TOEVAL=""
   append=""
-  #CMDLINE=" boot=LABEL=\" SYS1  EXT4 \"  `/bin/busybox  cat /proc/cmdline 2>/dev/null` root=LABEL=\"SYS01 EXT4\" last=\"off\" "
   if [ "$DEFAULT_KERNELCMDLINE_PARAMETERS" != "" ]; then 
-    CMDLINE="`/bin/busybox  cat /proc/cmdline 2>/dev/null` $DEFAULT_KERNELCMDLINE_PARAMETERS"
+    CMDLINE="$DEFAULT_KERNELCMDLINE_PARAMETERS `/bin/busybox  cat /proc/cmdline 2>/dev/null` "
   else
     CMDLINE="`/bin/busybox  cat /proc/cmdline 2>/dev/null`"
   fi
@@ -360,6 +359,12 @@ read_cmdline()
         HVAR=${ARG#*=}
 	# is a first token of tokenized string?  yes:append next tokens as they are until end of string
 	case $ARG in 
+	  *=\"*\")
+	    append=""
+	    AVAR="${ARG#*=\"}"
+	    AVAR="${AVAR//\"*}"
+	    ARGLINE=${ARGLINE#*$IVAR=\"$AVAR\"}
+	  ;;
 	  *=\"*)
 	    append=true
 	    AVAR="${ARGLINE#*=\"}"
@@ -371,6 +376,12 @@ read_cmdline()
 	  ;;
 	esac
 	case $ARG in 
+	  *=\'*\')
+	    append=""
+	    AVAR="${ARG#*=\'}"
+	    AVAR="${AVAR//\'*}"
+	    ARGLINE=${ARGLINE#*$IVAR=\'$AVAR\'}
+	  ;;
 	  *=\'*)
 	    append=true
 	    AVAR="${ARGLINE#*=\'}"
@@ -382,6 +393,12 @@ read_cmdline()
 	  ;;
 	esac
 	case $HVAR in 
+	  *=\"*\")
+	    append=""
+	    AVAR="${HVAR#*=\"}"
+	    AVAR="${AVAR//\"*}"
+	    ARGLINE=${ARGLINE#*$IVAR=\"$AVAR\"}
+	  ;;
 	  *=\"*)
 	    append=true
 	    AVAR="${ARGLINE#*=\"}"
@@ -828,8 +845,7 @@ probe_for_kernelmodule_squashfs()
   /bin/busybox mkdir -p /lib/modules 2>/dev/null
   /bin/busybox mkdir -p /lib/modules/$KERNVER 2>/dev/null
   /bin/busybox mkdir -p /lib/modules/$KERNVER/kernel 2>/dev/null
-  # you definitely need compiled into kernel : 
-  # squashfs with compression support, loop device support,  to mount successfully 
+  # without squashfs with compression support and loop device support: no successful mount  !
   /bin/busybox mount -t squashfs -o loop,ro   $KERNELFILE  /lib/modules/$KERNVER/kernel 2>/dev/null
   RC=$?
   /bin/busybox sync  2>/dev/null
@@ -841,7 +857,7 @@ probe_for_kernelmodule_squashfs()
   else
     # TODO:  how to run unsquashfs as standalone in initramfs without lots of libraries and squashfs compiled in 
     unsquashfs "$KERNELFILE" 2>/dev/null
-    #RC=$?
+    RC=$?
     /bin/busybox sync  2>/dev/null
     #/bin/busybox rm  $KERNELFILE  2>/dev/null
     echoconsole "$INITPREF" " unsquashfs '$KERNELFILE' ended with '$RC' "
@@ -951,6 +967,19 @@ wait_for_rootdevice()
 {
   local TIMEOUT 
   /bin/busybox sleep 2 
+  return 0
+}
+#
+#
+# under construction
+check_dialog_equipment()
+{
+  return 0
+}
+#
+# under construction
+branch2_dialog()
+{
   return 0
 }
 #
@@ -1064,7 +1093,11 @@ parse_rootdevice_string()
       ;;
       label=*)
          LABEL=${ROOT#*=} 
-         ROOTDEV="LABEL=\"$LABEL\""
+         ROOTDEV="LABEL=$LABEL"
+      ;;
+      label=\"*\")
+         LABEL=${ROOT#*=} 
+         ROOTDEV="$ROOT"
       ;;
       uuid=*)
          UUID=${ROOT#*=}
@@ -1075,8 +1108,8 @@ parse_rootdevice_string()
         # cut out the characters after last "-" in string  
         UUID=${PARTUUID//*-}
         DISKUUID=${PARTUUID//-*}
-        # allow maximal 0x16 (=22 decimal) partititons for PARTUUID, else switch to UUID interpretation
-        if [ $(( 0x$UUID )) -ge 1 -a $(( 0x$UUID )) -le 22 ]; then  
+        # allow maximal 0x80 (=128 decimal) partititons for PARTUUID, else switch to UUID interpretation
+        if [ $(( 0x$UUID )) -ge 1 -a $(( 0x$UUID )) -le 128 ]; then  
           PARTNUM=$(( $UUID )) 
         else
           UUID=$PARTUUID
@@ -1111,19 +1144,6 @@ parse_rootdevice_string()
       branch_2dialog        
   fi
   export  ROOTDEV LABEL UUID PARTUUID  DISKID PATHID DISKUUID PARTNUM
-}
-#
-#
-# under construction
-check_dialog_equipment()
-{
-  return 0
-}
-#
-# under construction
-branch2_dialog()
-{
-  return 0
 }
 #
 echoconsole "[ initsys-functions ]:" "read in!"    

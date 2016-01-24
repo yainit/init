@@ -1,6 +1,6 @@
 #
 #  INIT-FUNCTIONS for Universal INIT with busybox
-#  (C) Dieter Miosga , 2008-2016-01-01, dmiosga6200@gmail.com
+#  (C) Dieter Miosga , 2008-2016-01-13, dmiosga6200@gmail.com
 #
 #set -x
 #
@@ -28,6 +28,15 @@ echoconsole()
   if [ "$INITDBG" != "" ]; then  echofile "$SCRIPT" "$2"; fi
   if [ "$QUIET" = "" ]; then echo "$SCRIPT $2 "; fi
   if [ "$DELAY" != "" ]; then /bin/busybox usleep $SYSWAIT 2>/dev/null; fi
+}
+#
+echodebug()
+{
+  local  SCRIPT
+  # the //scriptname form of scriptname remained
+  # for some kernel internal reason
+  SCRIPT="$1"
+  if [ "$INITDBG" != "" -o "$DEBUG" != "" ]; then  echoconsole "$SCRIPT" "$2"; fi
 }
 #
 echobold()

@@ -63,7 +63,10 @@ recognize_rootdevice
 /bin/busybox mdev -s 2>/dev/null 
 /bin/busybox usleep 500000 2>/dev/null 
 /bin/busybox sync  2>/dev/null   
+#
 debug_mark
+ROOTDEVOLD="$ROOTDEV"
+#
 if [ "$ROOTDEV" = "" ]; then  
   read_cmdline
   assign_init_variables
@@ -78,15 +81,13 @@ if [ "$ROOTDEV" = "" ]; then
   /bin/busybox sync  2>/dev/null   
 fi
 #
-ROOTDEVOLD="$ROOTDEV"
-#
 debug_mark
 #
 if [ -e "$ROOTDEV" ] && `is_accessible_blockdevice "$ROOTDEV"`; then
   echoconsole "$INITPREF" " Recognized rootfilesystem device: '$ROOTDEV'"
 elif [  "$ROOTDEV" != "" ]; then
-  echoconsole "$INITPREF"  " Reading the Blockdevice Functions ...."
-  inline_external_file "blockdevice-functions"
+  #echoconsole "$INITPREF"  " Reading the Blockdevice Functions ...."
+  #inline_external_file "blockdevice-functions"
   echoconsole "$INITPREF"  " Recognizing rootfilesystem device"
   recognize_rootdevice
   /bin/busybox mdev -s 2>/dev/null 
@@ -94,11 +95,18 @@ elif [  "$ROOTDEV" != "" ]; then
   /bin/busybox sync  2>/dev/null 
   #
   # if the root device is specified but still unrecognized
-  if [ "$ROOTDEV" = "$ROOTDEVOLD" ]; then
+  if [ "$ROOTDEV" = "$ROOTDEVOLD" -o "$ROOTDEV" = ""  ]; then
     echoconsole "$INITPREF" "Rootfilesystem device not correctly detected!"
     echoconsole "$INITPREF" "Rereading and waiting for it to come up...."
+    read_cmdline
+    assign_init_variables
     parse_rootdevice_string
+    inline_external_file "blockdevice-functions"
     set_disk_parameters
+    recognize_rootdevice
+    /bin/busybox mdev -s 2>/dev/null 
+    /bin/busybox usleep 500000 2>/dev/null 
+    /bin/busybox sync  2>/dev/null   
   fi
   # the loop during await rootdevice to come up
   debug_mark
@@ -136,7 +144,7 @@ elif [  "$ROOTDEV" != "" ]; then
       else
         echoconsole "$INITPREF" "disklabel '$ylabel' of '/dev/$DEV' not found in '$ROOT'..."
       fi
-      TOK=PUUID_$DEV
+      TOK=PARTUUID_$DEV
       eval ylabel="\$$TOK"
       if [ "$PARTUUID" = "$ylabel" ]; then
         ROOTDEV=/dev/$DEV
@@ -161,30 +169,29 @@ elif [  "$ROOTDEV" != "" ]; then
   fi
 #
 elif [ "$ROOT" = "" -o "$ROOTDEV" = ""  ];then 
+  # temporary for testing purposes
   start_tracing
   if [ "$I" != "" ]; then
     echoconsole "$INITPREF"  "Interactive use specified, entering prompt: "
-    inline_external_file "branch-block-functions"
-    boot_device_dialog
-  elif [ "$ROOTDEV" = "" ]; then
+  else
     echoconsole "$INITPREF" "No root parameter specified, entering unconditional prompt: "
-    inline_external_file "branch-block-functions"
-    boot_device_dialog
   fi
+  inline_external_file "branch-block-functions"
+  boot_device_dialog
   # temporary for testing purposes
   stop_tracing
-
+else
+  # for ultimate security : more complicated and expensive check of rootdevice
+  if ! [ -e "$ROOTDEV" ]; then
+    inline_external_file "archvarfile"
+    inline_external_file "$ARCH-functions"
+    inline_external_file "branch-block-functions"
+    boot_device_check
+    /bin/busybox sync 
+  fi
 fi # ROOT != ""
 stop_tracing
 debug_mark
-# for ultimate security : more complicated and expensive check of rootdevice
-if ! [ -e "$ROOTDEV" ]; then
-  inline_external_file "archvarfile"
-  inline_external_file "$ARCH-functions"
-  inline_external_file "branch-block-functions"
-  boot_device_check
-  /bin/busybox sync 
-fi
 #
 if [ "$NOAUTO" = "" ]; then
 
@@ -245,7 +252,9 @@ fi #  !NOAUTO
 echoconsole "$INITPREF" "booting into root device '$ROOTDEV' ......"
 debug_mark
 #
-if ! [ -e "$ROOTDEV" ]; then
+if  [ -e "$ROOTDEV" ]; then
+  echoconsole "......and last Verification of Root device '$ROOTDEV' done!"
+else
   echoconsole "Root device ' $ROOTDEV ' not found !"
   error2ash "$INITPREF"
 fi
@@ -785,8 +794,10 @@ unmount_procfs_sysfs
 #  /bin/busybox sync
 #fi
 stop_tracing
-echolog "$INITPREF"  "Mounted Filesystems: "
-/bin/busybox cat /proc/mounts 2>/dev/null
+MNTFSYS=`/bin/busybox cat /proc/mounts 2>/dev/null`
+if [ "$MNTFSYS" != "" ]; then
+  echoconsole  "$INITPREF"  "Mounted Filesystems: '$MNTFSYS' "
+fi
 if [ "$CHROOTBB" != "" -a "$ROOTSWITCH" = "chroot" ]; then
   cd   $ROOTDIR
   echoconsole "$INITPREF" "${INITRD} @DIR:`pwd`:  ...issuing command: exec  $CHROOTBB ./ $INIT $RUNLEVEL < dev/console > dev/console 2>&1"

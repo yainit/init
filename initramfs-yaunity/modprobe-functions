@@ -1,7 +1,7 @@
 #
 #  MODPROBE-FUNCTIONS
 #  for Universal INIT with BusyBox
-#  (C) Dieter Miosga, 2008-2016-01-01, dmiosga6200@gmail.com
+#  (C) Dieter Miosga, 2008-2016-01-13, dmiosga6200@gmail.com
 #
 #echo   "modprobe-functions: Being read in...."
 #
@@ -10,13 +10,14 @@ check_for_depmod()
    local DEPMOD MODULEFILES RC
    DEPMOD=""
    RC=""
-   MODULEFILES="modules.dep modules.alias"
+   MODULEFILES="modules.dep modules.alias modules.order"
    for file in $MODULEFILES; do
      if [ -e /lib/modules/$KERNVER/$file  ]; then
-       echofile  "$INITPREF" "File '$file' found for $KERNVER, continuing..."
+       echodebug  "$INITPREF" "File '$file' found for $KERNVER, continuing..."
      else
-       echofile  "$INITPREF" "File '$file' not found for $KERNVER "
+       echodebug  "$INITPREF" "File '$file' not found for $KERNVER "
        DEPMOD="depmod"
+       break
      fi
    done
    if [ "$DEPMOD" != "" ]; then
@@ -146,6 +147,35 @@ remove_drivers()
 }
 #
 probe_drivers()
+{
+   local DRIVERS  DRIVER #CONDITION
+
+   DRIVERS="$1"
+   if [ "$DRIVERS" = "" ]; then
+     return 127
+   fi
+   eval DRIVER="\$$1"
+   if [ `echo $DRIVER | /bin/busybox wc -w 2>/dev/null` -ge 1 ]; then
+     DRIVERS="$DRIVER"
+   fi
+   DRIVERS="` echo $DRIVERS | /bin/busybox tr "-" "_" 2>/dev/null`"
+   
+    DRIVER=""
+    if [ "$INITDBG" != "" ]; then
+      for DRIVER in $DRIVERS; do
+        probe_kernelmodule_debug "$DRIVER"
+      done
+    else
+      for DRIVER in $DRIVERS; do
+        probe_kernelmodule "$DRIVER"
+      done
+    fi
+
+   /bin/busybox mdev -s  2>/dev/null
+   /bin/busybox sync     2>/dev/null
+}
+#
+probe_drivers_old()
 {
    local DRIVERS  DRIVER #CONDITION
 
@@ -609,19 +639,20 @@ probe_legacy_inputdevice_drivers()
   COND1="`/bin/busybox lspci -k 2>/dev/null | /bin/busybox grep "Class 09" 2>/dev/null`"
   COND2="`/bin/busybox lspci -k 2>/dev/null | /bin/busybox grep "Class 07" 2>/dev/null`"
   if [ "$COND1" != "" -o "$COND2" != "" ]; then
-    KEYBOARDDEV=`/bin/busybox cat  /proc/bus/input/devices 2>/dev/null | /bin/busybox grep "eyboard"  2>/dev/null`
-    [ "$KEYBOARDDEV" = "" ] &&   KEYBOARDDEV=`/bin/busybox grep "sysrq kbd event"   /proc/bus/input/devices 2>/dev/null `
+#    KEYBOARDDEV=`/bin/busybox cat  /proc/bus/input/devices 2>/dev/null | /bin/busybox grep "sysrq"  2>/dev/null`
+#    [ "$KEYBOARDDEV" = "" ] &&   KEYBOARDDEV=`/bin/busybox grep "leds"   /proc/bus/input/devices 2>/dev/null `
+#    [ "$KEYBOARDDEV" = "" ] &&   KEYBOARDDEV=`/bin/busybox grep "kbd"   /proc/bus/input/devices 2>/dev/null `
 
-    MOUSEDEV=`/bin/busybox cat  /proc/bus/input/devices 2>/dev/null | /bin/busybox grep "ouse"  2>/dev/null`
-    if [ "$MOUSEDEV" = "" -o "$KEYBOARDDEV" = "" ]; then
+#    MOUSEDEV=`/bin/busybox cat  /proc/bus/input/devices 2>/dev/null | /bin/busybox grep "ouse"  2>/dev/null`
+#    if [ "$MOUSEDEV" = "" -o "$KEYBOARDDEV" = "" ]; then
       INPUTDRIVERS="$DEFAULT_LEGACYINPUTDRIVERS"
       echoconsole "$INITPREF" "Probing more (legacy) INPUT devices"
       export INPUTDRIVERS
       probe_drivers "INPUTDRIVERS"
-    else
-      echoconsole "$INITPREF" "No legacy INPUT devices found..."
-    fi
+  else
+      echoconsole "$INITPREF" "No legacy INPUT devices in pci bus found..."
   fi
+  
 
 }
 #
@@ -780,28 +811,28 @@ probe_initially()
 
   if [ "`/bin/busybox lspci 2>/dev/null`" != "" ]; then
 
-    echofile "$INITPREF" "Found pci bus, probing busdrivers"
+    echodebug "$INITPREF" "Found pci bus, probing busdrivers"
     debug_busdevices "$MSGFILE" "before loading busdrivers"
     probe_systembus_drivers
 
-    echofile "$INITPREF" "probing input device drivers, inhibit with nokbd and nomouse"
+    echodebug "$INITPREF" "probing input device drivers, inhibit with nokbd and nomouse"
     debug_busdevices "$MSGFILE" "before loading inputdrivers"
     probe_inputdevice_drivers
 
-    echofile "$INITPREF" "probing video device drivers, inhibit with nomon"
+    echodebug "$INITPREF" "probing video device drivers, inhibit with nomon"
     #debug_mark "probing video device drivers, inhibit with nomon"
     debug_busdevices "$MSGFILE" "before loading monitor drivers"
     probe_graphic_drivers
 
-    echofile "$INITPREF" "probing block device drivers, inhibit with nohd and nocd"
+    echodebug "$INITPREF" "probing block device drivers, inhibit with nohd and nocd"
     debug_busdevices "$MSGFILE" "before loading blockdevice drivers"
     probe_blockdevice_drivers
 
-    echofile "$INITPREF" "probing legacy input device drivers"
+    echodebug "$INITPREF" "probing legacy input device drivers"
     debug_busdevices "$MSGFILE" "before loading legacy input drivers"
     probe_legacy_inputdevice_drivers
 
-    echofile "$INITPREF" "probing filesystem drivers, inhibit with nohd and nocd"
+    echodebug "$INITPREF" "probing filesystem drivers, inhibit with nohd and nocd"
     debug_busdevices "$MSGFILE" "before loading filesys drivers"
     probe_filesystem_drivers
 
@@ -813,7 +844,7 @@ probe_initially()
     debug_busdevices "$MSGFILE" "before loading sound drivers"
     probe_sound_drivers
   else
-    echofile "$INITPREF" "No pci bus found , probing essential drivers"
+    echodebug "$INITPREF" "No pci bus found , probing essential drivers"
     debug_busdevices "$MSGFILE" "before loading essential drivers"
     modprobe_prepci_drivers
   fi
@@ -828,7 +859,7 @@ find_drivers_from_uevents()
   [ "$INITPREF" ] || INITPREF="[ $0/- ]:"
   [ "$MSGFILE" ] || MSGFILE="initmsg"
   DRIVERS="`/bin/busybox find /sys -name "uevent" -exec cat '{}' \; 2>/dev/null | /bin/busybox grep DRIVER 2>/dev/null | /bin/busybox cut -f2- -d= 2>/dev/null | /bin/busybox tr "\n" " " 2>/dev/null ` "
-  echofile "$INITPREF" "Found drivers from from uevents: '$DRIVERS'"
+  echodebug "$INITPREF" "Found drivers from from uevents: '$DRIVERS'"
   MODULES=""
   # filter duplicate names
   for DRV in $DRIVERS; do
@@ -836,7 +867,7 @@ find_drivers_from_uevents()
       MODULES="$MODULES $DRV "
     fi
   done
-  echofile "$INITPREF" "Found modules from uevents: '$MODULES'"
+  echodebug "$INITPREF" "Found modules from uevents: '$MODULES'"
   MODULES="`echo $MODULES $MODULES2LOAD | /bin/busybox tr "-" "_" 2>/dev/null` "
   # resolve dependencies
   for DRV in $MODULES; do
@@ -848,7 +879,7 @@ find_drivers_from_uevents()
         D="`/bin/busybox basename "$D" 2>/dev/null`"
         D=${D//.ko*}
         if  `is_not_substring_of  "$D " " $MODULES " `; then
-           echofile "$INITPREF"  "adding module '$D'"
+           echodebug "$INITPREF"  "adding module '$D'"
            MODULES="$MODULES $D "
         fi
       done
@@ -897,8 +928,8 @@ find_drivers_from_uevents()
            MOD="`echo ${DRV#slots=} | /bin/busybox tr "," " " 2>/dev/null`"
          ;;
     esac
-    echofile  "$INITPREF" "Found : '$DRV'"
-    echofile  "$INITPREF" "Replaced with : '$MOD'"
+    echodebug  "$INITPREF" "Found : '$DRV'"
+    echodebug  "$INITPREF" "Replaced with : '$MOD'"
     MODULES=" $MOD $MODULES "
 
   done
@@ -918,12 +949,12 @@ find_drivers_from_uevents()
         fi
       done
     else
-      echofile "$INITPREF" "Driver '$DRV' not found with modprobe in kernel modules" 
+      echodebug "$INITPREF" "Driver '$DRV' not found with modprobe in kernel modules" 
     fi
   done
   MODULES2LOAD="$MODULES2LOAD $MODULES "
-  echofile "$INITPREF" "Found modules with modprobe -D from modules.dep: '$MODULES'"
-  echofile "$INITPREF" "Found modules to load: '$MODULES2LOAD'"
+  echodebug "$INITPREF" "Found modules with modprobe -D from modules.dep: '$MODULES'"
+  echodebug "$INITPREF" "Found modules to load: '$MODULES2LOAD'"
 
 }
 #
@@ -1132,8 +1163,8 @@ set_initial_modules()
      if [ -e /proc/bus/input/devices ]; then
        if [ "$NOKBD" = "" ]; then
 	 if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices"` && \
-	     `is_not_string_in_file  "kbd leds" "/proc/bus/input/devices"` && \
-	     `is_not_string_in_file  "sysrq kbd" "/proc/bus/input/devices"` ; then
+	     `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices"` && \
+	     `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices"` ; then
 	     MODULES2LOAD="$MODULES2LOAD atkbd usbkbd usbhid hid_generic"
 	 fi
        fi
@@ -1150,8 +1181,8 @@ set_initial_modules()
        if [ -e /proc/bus/input/devices ]; then
 	 if [ "$NOKBD" = "" ] || [ "$NOMOUSE" = "" ]; then
 	   if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices"` && \
-	       `is_not_string_in_file  "kbd leds" "/proc/bus/input/devices"` && \
-	       `is_not_string_in_file  "sysrq kbd" "/proc/bus/input/devices"` || \
+	       `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices"` && \
+	       `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices"` || \
 	       `is_not_string_in_file  "ouse" "/proc/bus/input/devices"`  ; then
 	       MODULES1="ath3k rfcomm bnep btusb bcm203x bpa10x bfusb st_drv bluetooth"
 	   fi  
@@ -1207,14 +1238,14 @@ evaluate_aliases()
     fi
   fi
   export MODALIASFILE
-  echofile "$INITPREF" "modaliasfile                : '$MODALIASFILE'"
-  echofile "$INITPREF" "evaluating all aliases from : '$MODALIASFILE'"
+  echodebug  "$INITPREF" "modaliasfile                : '$MODALIASFILE'"
+  echodebug "$INITPREF" "evaluating all aliases from : '$MODALIASFILE'"
   /bin/busybox cat "$MODALIASFILE" 2>/dev/null | while read pref name value; do
     #echo " aliasing: '$aliasable'"
     eval "$pref $value=$name" 2>/dev/null
     RC=$?
     if [ $RC -ne 0 ]; then
-      echofile "$INITPREF" "failed to evaluate alias '$pref $value=$name' with '$RC'  "
+      echodebug "$INITPREF" "failed to evaluate alias '$pref $value=$name' with '$RC'  "
     #else
     #  echofile "$INITPREF" "evaluated alias '$pref $value=$name' with '$RC'  "
     fi 
@@ -1238,7 +1269,7 @@ find_drivers_with_aliases_fast()
   
   local DRIVERS DRIVER ALIASES MODULES
   if [ -e bbmodp.sh ]; then
-    echofile "$INITPREF" "file bbmodp.sh already created! reusing..."
+    echodebug "$INITPREF" "file bbmodp.sh already created! reusing..."
   else
     echo 'dev2mod() { while read dev rest; do case $dev in' > bbmodp.sh
     /bin/busybox sort -r  $MODALIASFILE | \
@@ -1271,7 +1302,7 @@ find_drivers_with_aliases_fast()
   done
   MODULES2LOAD="$MODULES"
   export MODULES2LOAD
-  echofile "$INITPREF" "modules-finally: '$MODULES2LOAD'"
+  echodebug  "$INITPREF" "modules-finally: '$MODULES2LOAD'"
 }
 #
 find_drivers_refine()
@@ -1292,9 +1323,9 @@ find_drivers_refine()
     if [ "$MODULES" != "" ]; then
       MODULES2LOAD="$MODULES2LAOD $MODULES"
       export MOODULES2LOAD
-      echofile "$INITPREF" "modules-finally: '$MODULES2LOAD'"
+      echodebug  "$INITPREF" "modules-finally: '$MODULES2LOAD'"
     else
-      echofile "$INITPREF" "No more modules found with refining search!"
+      echodebug "$INITPREF" "No more modules found with refining search!"
     fi
   fi
 }
@@ -1328,7 +1359,7 @@ find_drivers_with_bbmodprobe()
   # ff=unassigned
   # device manufacturer codes : 1022=amd 1002=ati/amd 10de=nvidia 8086=intel
 
-  echofile "$INITPREF" "search directory top path: '$SEARCHDIR'"
+  echodebug  "$INITPREF" "search directory top path: '$SEARCHDIR'"
   for modalias in `/bin/busybox find "$SEARCHDIR"  -name "modalias" -exec cat '{}' 2>/dev/null \; `; do
     DRIVER="`/bin/busybox modprobe -D "$modalias" 2>/dev/null | /bin/busybox cut -f2- -d " " 2>/dev/null | /bin/busybox tr  "-" "_" 2>/dev/null | /bin/busybox tr  "\n" " " 2>/dev/null`"
     # integrate multiple drivers;  duplicates will be removed later at once (faster!)
@@ -1366,7 +1397,7 @@ find_drivers_with_aliases()
     DIR="/sys"
   fi
   find_drivers_with_bbmodprobe "$DIR" "$MODALIASFILE"
-  echofile "$1" "modules detected with aliases: '$MODULES2LOAD'"
+  echodebug  "$1" "modules detected with aliases: '$MODULES2LOAD'"
   return 0
 } 
 #
@@ -1398,7 +1429,7 @@ kernelmodules_autoload()
   local mod
   # we absolutely need here global string variables:
   # MODULES_ORDER   : all system variables in the order to load correctly
-  # MODULES2LOAD    : all modules recognized from lspci/modalias to load for local machine 
+  # MODULES2LOAD    : all modules recognized from lspci/modalias/uevent to load for local machine 
   #find_drivers_from_uevents
   #find_drivers_from_modaliases
   #echoconsole "final modules: $MODULES2LOAD"
@@ -1565,8 +1596,8 @@ remove_unused_modules()
      fi
      done
    done
-   echofile "$INITPREF" "Drivers to keep:"
-   echofile "$INITPREF" ": $DRIVERS2KEEP"
+   echodebug  "$INITPREF" "Drivers to keep:"
+   echodebug "$INITPREF" ": $DRIVERS2KEEP"
 
    # 2nd step for refinement of kmodule dependencies
    DRIVERS=""
@@ -1579,8 +1610,8 @@ remove_unused_modules()
      done
    done
 
-   echofile "$INITPREF" "Drivers to keep:"
-   echofile "$INITPREF" ": $DRIVERS2KEEP"
+   echodebug  "$INITPREF" "Drivers to keep:"
+   echodebug  "$INITPREF" ": $DRIVERS2KEEP"
 
    # 3rd step of refinement
    DRIVER=""
@@ -1598,9 +1629,9 @@ remove_unused_modules()
    
    DRIVERS2KEEP="$DRIVERS2KEEP $DEFAULT_DRIVERS2KEEP $FILEDRIVERS"
    #SYSDRIVERS="$DEFAULT_SYSBUSDRIVERS $DEFAULT_SYSATADRIVERS $DEFAULT_SYSUSBDRIVERS $DEFAULT_SYSVIDEODRIVERS"
-   echofile "$INITPREF" "Drivers to keep:"
-   echofile "$INITPREF" ": $DRIVERS2KEEP"
-   echofile "$INITPREF" "Removing unnecessary drivers.... "
+   echodebug "$INITPREF" "Drivers to keep:"
+   echodebug "$INITPREF" ": $DRIVERS2KEEP"
+   echodebug "$INITPREF" "Removing unnecessary drivers.... "
    for DRIVER in $DRIVERS2REMOVE; do
      #DRIVERINUSE=""
      if `is_not_substring_of "$DRIVER " " $ALLFOUNDMODULES "`; then
@@ -1622,10 +1653,10 @@ remove_unused_modules()
     fi
    done < /proc/modules
 
-   echofile "$INITPREF" "...done removing unused modules "
+   echodebug "$INITPREF" "...done removing unused modules "
    /bin/busybox sync 2>/dev/null
   else
-   echofile "$INITPREF" "no modules found loaded, continuing..."
+   echodebug "$INITPREF" "no modules found loaded, continuing..."
   fi
 
 }

@@ -1,6 +1,6 @@
 #
 #  INIT-FUNCTIONS for YaIniT Yet an almost universal INIT Tool with busybox
-#  (C) Dieter Miosga , 2008-2016-01-01
+#  (C) Dieter Miosga , 2008-2016-01-13, dmiosga6200@gmail.com
 #
 #echo   "[ initrd-functions ]: Being read in...."
 # read in necessary functions
@@ -145,7 +145,7 @@ branch_2blockdev()
      #/bin/busybox ln -sf /dummy.sh /etc/init.d/rcS
      /bin/busybox cp init initrc
      if [ "$INITDBG" != "" ]; then
-       echoconsole "$INITPREF" "we branch out with '$ARCH' '$BASENM'"
+       echoconsole "$INITPREF" "branching out to initrc with '$ARCH' '$BASENM'"
        debug_prompt "$1"
      fi
      export PHASE OLDINITPARAMETERS="$INITPARAMETERS" 
@@ -345,7 +345,7 @@ setup_architecture_specifics()
      if [ "$(/bin/busybox ls -1 /bin/busybox-*  2>/dev/null)" != "" ]; then
          ECHOTEXT=""
          cmdset_optimize   "$INITPREF" "/bin/busybox"
-       echoconsole "" "$ECHOTEXT"
+         echoconsole "" "$ECHOTEXT"
      else
          echoconsole "$INITPREF" " error in optimizing : choosable files, busybox-*  not found!"
      fi
@@ -384,7 +384,7 @@ setup_system()
     /bin/busybox sync
 
     if [ "`/bin/busybox ls -1 /lib/modules/$KERNVER/kernel  2>/dev/null`" != "" ]; then      
-      # in case the kernelmodule tarball contains some modules necessary to mount 
+      # in case the kernelmodule tarball contains some directly accessible modules necessary to mount 
       # the squashfs
       export LOCAL_DRIVERS="yes"
       inline_external_file "modprobe-functions"
@@ -478,16 +478,16 @@ initial_modules_load_defaults()
      if [ "$DEBUG" != "" -o "$INITDBG" !=  "" ]; then
        debug_busdevices "$MSGFILE" "debugging for input device drivers "     
        /bin/busybox sleep 2
-       if `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
+       if `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices" ` || `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" `; then
          debug_busdevices "$MSGFILE" "before probing extraordinarily for inputdrivers"
          probe_inputdevice_drivers
-          /bin/busybox mdev -s  2>/dev/null
-          /bin/busybox sync     2>/dev/null
-         if  `is_not_string_in_file   "eyboard" "/proc/bus/input/devices" `; then
+         /bin/busybox mdev -s  2>/dev/null
+         /bin/busybox sync     2>/dev/null
+        if `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices" ` || `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" `; then
            probe_legacy_inputdevice_drivers
-         else
+        else
              SYSERRPROMPT=yes
-         fi
+        fi
        else
            SYSERRPROMPT=yes
        fi
@@ -498,11 +498,11 @@ initial_modules_load_defaults()
         debug_prompt "$INITPREF"       
      fi
      #probe_usb_devices
-     if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
+     if `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices" ` || `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" `; then
        probe_inputdevice_drivers
        /bin/busybox mdev -s  2>/dev/null
        /bin/busybox sync     2>/dev/null
-       if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
+       if `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices" ` || `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" `; then
          probe_legacy_inputdevice_drivers
          /bin/busybox mdev -s  2>/dev/null
          /bin/busybox sync     2>/dev/null
@@ -557,7 +557,7 @@ initial_modules_load_auto()
      # there are usbhid adapters for mouse and keyboard that appear as barcode scanners
      # therefore, the use of kbd has to be checked too, 
      # but for the Power Button 
-     # the sequence  "sysrq kbd event"  appears to do the job for unique specification  
+     # the sequence  "sysrq kbdt"  appears to do the job for unique specification  
      if  `is_not_string_in_file  "ouse" "/proc/bus/input/devices" ` || `is_not_string_in_file  "kbd" "/proc/bus/input/devices" `; then
         echofile  "$INITPREF" " initial state before probing input drivers ..."
         probe_inputdevice_drivers
@@ -569,13 +569,13 @@ initial_modules_load_auto()
      RC=11
      for i in 1 2 3; do
        case "$(/bin/busybox cat /proc/bus/input/devices 2>/dev/null)" in
-	 *"sysrq kbd event"*|*"kbd leds event"*|*eyboard*|*ouse*|*EV=120013*|*EV=1f*)
+	 *sysrq*kbd*|*kbd*leds*|*eyboard*|*ouse*)
 	   echoconsole "$INITPREF" "Keyboard | Mouse Driver has been loaded and device(s) appear(s) in bus."
 	   SYSERRPROMPT=yes
 	   RC=0
 	 ;;
 	 *Handlers=kbd*)
-	    echofile  "$INITPREF" " Not all devices present, probing input drivers ..."
+	    echofile  "$INITPREF" " Not all devices present, (re)probing input drivers ..."
 	    probe_inputdevice_drivers
 	    /bin/busybox mdev -s  2>/dev/null
 	    /bin/busybox sync     2>/dev/null
@@ -608,14 +608,14 @@ initial_modules_load_auto()
 	 echoconsole "$INITPREF" " Mouse and Keyboard successfully initiated "
      fi
      if [ $RC -ne 0 ]; then
-	 if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
+	 if  `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices" ` || `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" `; then
 	    echofile  "$INITPREF" " initial state before probing input drivers "
 	    probe_inputdevice_drivers
 	    /bin/busybox mdev -s  2>/dev/null
 	    /bin/busybox sync     2>/dev/null
 	    debug_busdevices "$MSGFILE" "after inputdevice driver loading"     
 	 fi
-	 if  `is_not_string_in_file  "sysrq kbd event" "/proc/bus/input/devices" `; then
+	 if  `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices" ` || `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" `; then
 	     /bin/busybox sleep 1  2>/dev/null
 	     probe_inputdevice_drivers
 	     /bin/busybox mdev -s  2>/dev/null
@@ -624,7 +624,7 @@ initial_modules_load_auto()
 	 else
 	     SYSERRPROMPT=yes
 	 fi
-	 if  `is_not_string_in_file  "sysrq kbd event" "/proc/bus/input/devices" `; then
+	 if  `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices" ` || `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" `; then
 	 #if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
 	   probe_legacy_inputdevice_drivers
 	   /bin/busybox mdev -s  2>/dev/null
@@ -633,7 +633,7 @@ initial_modules_load_auto()
 	    debug_busdevices "$MSGFILE" "after legacy inputdevice driver loading"     
 	 #fi
 	 fi
-	 if  `is_string_in_file  "sysrq kbd event" "/proc/bus/input/devices" ` || `is_string_in_file  "kbd leds event" "/proc/bus/input/devices" `; then
+	 if  `is_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" ` || `is_string_in_file  "kbd*leds" "/proc/bus/input/devices" `; then
 	   SYSERRPROMPT=yes
 	 fi
     #     if  `is_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
@@ -668,12 +668,12 @@ initial_modules_load_auto()
      /bin/busybox mdev -s  2>/dev/null
      /bin/busybox sync     2>/dev/null
      #
-     if  `is_not_string_in_file  "EV=120013" "/proc/bus/input/devices" `; then
+     if  `is_not_string_in_file  "kbd" "/proc/bus/input/devices" `; then
 #     if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
        probe_inputdevice_drivers
        /bin/busybox mdev -s  2>/dev/null
        /bin/busybox sync     2>/dev/null
-      if  `is_string_in_file  "EV=120013" "/proc/bus/input/devices" `; then
+      if  `is_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" ` || `is_string_in_file  "kbd*leds" "/proc/bus/input/devices" `; then
         SYSERRPROMPT=yes
       else
 #         if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
@@ -685,8 +685,7 @@ initial_modules_load_auto()
 #         fi
        fi
      fi
-     if  `is_string_in_file  "EV=120013" "/proc/bus/input/devices" `; then
-       SYSERRPROMPT=yes
+     if  `is_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" ` || `is_string_in_file  "kbd*leds" "/proc/bus/input/devices" `; then  SYSERRPROMPT=yes
      else
 #         if  `is_not_string_in_file  "eyboard" "/proc/bus/input/devices" `; then
        probe_legacy_inputdevice_drivers
@@ -707,7 +706,7 @@ initial_modules_load_auto()
        echoconsole  "$INITPREF" " before reprobing for mouse drivers  "
        #KBDHANDLERS=""
        #KBDHANDLERS=`/bin/busybox grep "sysrq kbd event" /proc/bus/input/devices 2>/dev/null `
-       if  `is_not_string_in_file  "EV=120013" "/proc/bus/input/devices" `; then
+       if `is_not_string_in_file  "kbd*leds" "/proc/bus/input/devices" ` || `is_not_string_in_file  "sysrq*kbd" "/proc/bus/input/devices" `; then
            echoconsole  "$INITPREF" " Drivers for Keyboard not loaded, abending with prompt! "
        fi
        debug_prompt "$INITPREF"       

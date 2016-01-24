@@ -41,9 +41,9 @@ if [ "$WKDIR" != "" ]; then
   THISDIR=$WKDIR
  fi
 else
-  WKDIR=$THISDIR
+  WKDIR="$THISDIR"
 fi
- cd $WKDIR
+ cd "$WKDIR"
 
 if [ "$INITRD" = "" ]; then
   INITRD=yainit0

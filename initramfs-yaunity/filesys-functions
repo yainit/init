@@ -1,6 +1,6 @@
 #
 #  File system funcions for YaIniT Universal INIT with busybox
-#  (C) Dieter Miosga , 2008-2016-01-01, dmiosga6200@gmail.com
+#  (C) Dieter Miosga , 2008-2016-01-13, dmiosga6200@gmail.com
 #
 #set -x
 #DELAY=delay

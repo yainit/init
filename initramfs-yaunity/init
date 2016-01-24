@@ -3,7 +3,7 @@
 #  Universal INIT with busybox > 1.14.3
 #  My optimization in the parameters interpretation time, execution time, 
 #     portability and (re)usability 
-#  (C) Dieter Miosga , 2008-2016-01-05, dmiosga6200@gmail.com
+#  (C) Dieter Miosga , 2008-2016-01-13, dmiosga6200@gmail.com
 #     ###  ! / bin / ash
 #
 #   PHASE 0
@@ -114,7 +114,7 @@ else # the big ELSE
   boot_on
   #
   #  4. branch out then for switch to rootfs or continue boot to RAM
-  branch_out "$INITPREF"  
+  branch_out "$INITPREF"
   #
 fi
 #
