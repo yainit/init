@@ -10,6 +10,14 @@ wherefrom you want to have invoked the system start by your bootloader.
 CHANGES:
 =========
 
+
+2016-01-24:
+
+The now updated version does boot correctly and without any corrective
+parameters.
+Added possibility to specify default yainit commandline parameters by an entry
+in the yainitdefaults file.  
+
 2016-01-07:
 
 Solved issue with the new graphic driver stack. Specifying nomon should 
