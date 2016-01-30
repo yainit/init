@@ -322,7 +322,7 @@ read_cmdline()
   # by repetitively specifying with other value (the last! validates)
   #
   # OEUVRE DE MAITRE, The ultimate solution for this problem
-  # (C) Dieter Miosga <dmiosga6200@gmail.com> 2009-December-through-2016-01-01
+  # (C) Dieter Miosga <dmiosga6200@gmail.com> 2009-December-through-2016-01-24
   local ARG VAR HVAR IVAR AVAR  TOEVAL CMDLINE
   
   ARG=""
@@ -1011,28 +1011,6 @@ parse_rootdevice_string()
         export ROOTDEV ROOT
         parse_rootdevice_string
       ;;
-      id=*)
-        ROOTVAR=${ROOT#id=}
-        DISKID=${ROOTVAR%-part*}
-        PARTNUM=${ROOTVAR#$DISKID-part}
-        #PARTNUM=${PARTNUM#part}
-        if [ "$PARTNUM" != "" ]; then
-          ROOTDEV="ID=$DISKID-part$PARTNUM"
-        else
-          ROOTDEV="ID=$DISKID"
-        fi
-      ;;
-      path=*)
-        ROOTVAR=${ROOT#path=}
-        PATHID=${ROOTVAR%-part*}
-        PARTNUM=${ROOTVAR#$PATHID-part}
-        #PARTNUM=${PARTNUM#part}
-        if [ "$PARTNUM" != "" ]; then
-          ROOTDEV="PATH=$PATHID-part$PARTNUM"
-        else
-          ROOTDEV="PATH=$PATHID"
-        fi
-      ;;
     # any information for root device specified in fields with separator ':'?
       *:*:*)
         ROOT=${ROOT%:*}
@@ -1091,13 +1069,13 @@ parse_rootdevice_string()
         UUID=${UUID#uuid=}
         ROOTDEV="UUID=$UUID"
       ;;
+      label=\"*\"|label=\"*)
+         LABEL=${ROOT#*=} 
+         ROOTDEV="$ROOT"
+      ;;
       label=*)
          LABEL=${ROOT#*=} 
          ROOTDEV="LABEL=$LABEL"
-      ;;
-      label=\"*\")
-         LABEL=${ROOT#*=} 
-         ROOTDEV="$ROOT"
       ;;
       uuid=*)
          UUID=${ROOT#*=}
@@ -1117,6 +1095,28 @@ parse_rootdevice_string()
         fi
         ROOTDEV="PARTUUID=$PARTUUID"
         export PARTUUID_ROOT=$PARTUUID
+      ;;
+      id=*)
+        ROOTVAR=${ROOT#id=}
+        DISKID=${ROOTVAR%-part*}
+        PARTNUM=${ROOTVAR#$DISKID-part}
+        #PARTNUM=${PARTNUM#part}
+        if [ "$PARTNUM" != "" ]; then
+          ROOTDEV="ID=$DISKID-part$PARTNUM"
+        else
+          ROOTDEV="ID=$DISKID"
+        fi
+      ;;
+      path=*)
+        ROOTVAR=${ROOT#path=}
+        PATHID=${ROOTVAR%-part*}
+        PARTNUM=${ROOTVAR#$PATHID-part}
+        #PARTNUM=${PARTNUM#part}
+        if [ "$PARTNUM" != "" ]; then
+          ROOTDEV="PATH=$PATHID-part$PARTNUM"
+        else
+          ROOTDEV="PATH=$PATHID"
+        fi
       ;;
       # is there a shell variable specified before rootdevice's label or uuid declaration?
       *=label=*|*=uuid=*|*=partuuid=*)
