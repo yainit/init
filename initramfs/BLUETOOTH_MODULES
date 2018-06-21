@@ -1,5 +1,0 @@
-#
-DEFAULT_BLUETOOTHDRIVERS=""
-#
-ALL_BTDRIVERS=" hci_vhci hci_uart bcm203x bpa10x bfusb dtl1_cs bt3c_cs bluecard_cs btuart_cs btusb btsdio btintel ath3k btmrvl btmrvl_sdio btwilink btbcm btrtl rfcomm bnep btusb bcm203x bpa10x bfusb btcoexist bluetooth usbtmc  legousbtower bt819 bt856 bt866 "
-#
